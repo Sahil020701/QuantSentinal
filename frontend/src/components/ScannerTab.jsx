@@ -14,6 +14,8 @@ const SECTOR_SPECULATIONS = {
   'ETFs': "Reflecting broad market liquidity and structural growth of the Indian economy. Provides diversified momentum exposure without single-stock corporate governance risks."
 };
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 export default function ScannerTab() {
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,7 @@ export default function ScannerTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('http://localhost:5001/api/scanner');
+      const res = await fetch(`${API_URL}/api/scanner`);
       if (!res.ok) throw new Error("Failed to fetch scanner quotes");
       const data = await res.json();
       setQuotes(data);

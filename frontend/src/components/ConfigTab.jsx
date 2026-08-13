@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposit, onTriggerRun }) {
   const { config } = portfolio;
 
@@ -24,7 +26,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     setSaving(true);
     setMessage('');
     try {
-      const res = await fetch('http://localhost:5001/api/config', {
+      const res = await fetch(`${API_URL}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -55,7 +57,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     setDepositing(true);
     setMessage('');
     try {
-      const res = await fetch('http://localhost:5001/api/deposit', {
+      const res = await fetch(`${API_URL}/api/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: Number(depositAmount) })
@@ -77,7 +79,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     setRunning(true);
     setMessage('');
     try {
-      const res = await fetch('http://localhost:5001/api/trigger-run', { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/trigger-run`, { method: 'POST' });
       if (!res.ok) throw new Error("Trigger run failed");
       const data = await res.json();
       onTriggerRun(data.state);
@@ -95,7 +97,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     setResetting(true);
     setMessage('');
     try {
-      const res = await fetch('http://localhost:5001/api/reset', { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/reset`, { method: 'POST' });
       if (!res.ok) throw new Error("Reset failed");
       const data = await res.json();
       onReset(data.state);

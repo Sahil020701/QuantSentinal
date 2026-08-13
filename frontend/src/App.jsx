@@ -7,6 +7,8 @@ import ScannerTab from './components/ScannerTab';
 import LedgerTab from './components/LedgerTab';
 import ConfigTab from './components/ConfigTab';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 export default function App() {
   const [portfolio, setPortfolio] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -22,7 +24,7 @@ export default function App() {
     setError(null);
     try {
       // API call automatically triggers catch-up simulation in backend
-      const res = await fetch('http://localhost:5001/api/portfolio');
+      const res = await fetch(`${API_URL}/api/portfolio`);
       if (!res.ok) throw new Error("Failed to load portfolio statistics");
       const data = await res.json();
       setPortfolio(data);
