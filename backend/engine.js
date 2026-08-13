@@ -107,7 +107,7 @@ async function saveState(state) {
     await StateModel.findOneAndUpdate(
       { key: 'simulation_state' },
       stateData,
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
   } catch (e) {
     console.error("Error saving state to MongoDB:", e);
