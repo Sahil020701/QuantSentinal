@@ -47,12 +47,12 @@ export default function App() {
     if (day === 0 || day === 6) {
       return { open: false, text: "MARKET CLOSED (WEEKEND)" };
     }
-    
+
     // Market hours: 9:15 AM (0915) to 3:30 PM (1530)
     if (time >= 915 && time <= 1530) {
       return { open: true, text: "MARKET LIVE (09:15 - 15:30)" };
     }
-    
+
     return { open: false, text: "MARKET CLOSED (AFTER HOURS)" };
   };
 
@@ -93,11 +93,11 @@ export default function App() {
         <div className="brand-section">
           <div className="logo-badge">QS</div>
           <div className="brand-info">
-            <h1>Quant Sentinal AI Trading Desk</h1>
+            <h1>Quant Sentinal Trading Desk</h1>
             <p>Aggressive Indian Equities Portfolio Simulator</p>
           </div>
         </div>
-        
+
         <div className={`status-badge ${marketStatus.open ? 'live' : 'closed'}`}>
           <div className="status-dot" />
           <span>{marketStatus.text}</span>
@@ -106,32 +106,32 @@ export default function App() {
 
       {/* Tab Navs */}
       <nav className="tabs-navigation">
-        <button 
-          onClick={() => setActiveTab('dashboard')} 
+        <button
+          onClick={() => setActiveTab('dashboard')}
           className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
         >
           💼 Portfolio Dashboard
         </button>
-        <button 
-          onClick={() => setActiveTab('scanner')} 
+        <button
+          onClick={() => setActiveTab('scanner')}
           className={`tab-btn ${activeTab === 'scanner' ? 'active' : ''}`}
         >
           🔍 Market Scanner
         </button>
-        <button 
-          onClick={() => setActiveTab('logs')} 
+        <button
+          onClick={() => setActiveTab('logs')}
           className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
         >
           📝 Quant Sentinal Logs
         </button>
-        <button 
-          onClick={() => setActiveTab('ledger')} 
+        <button
+          onClick={() => setActiveTab('ledger')}
           className={`tab-btn ${activeTab === 'ledger' ? 'active' : ''}`}
         >
           📊 Closed Trades ({portfolio.history.length})
         </button>
-        <button 
-          onClick={() => setActiveTab('config')} 
+        <button
+          onClick={() => setActiveTab('config')}
           className={`tab-btn ${activeTab === 'config' ? 'active' : ''}`}
         >
           ⚙️ Strategy Config
@@ -143,21 +143,21 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <DashboardTab portfolio={portfolio} />
         )}
-        
+
         {activeTab === 'scanner' && (
           <ScannerTab />
         )}
-        
+
         {activeTab === 'logs' && (
           <LogTab logs={portfolio.logs} />
         )}
-        
+
         {activeTab === 'ledger' && (
           <LedgerTab history={portfolio.history} />
         )}
-        
+
         {activeTab === 'config' && (
-          <ConfigTab 
+          <ConfigTab
             portfolio={portfolio}
             onConfigUpdate={(newConfig) => {
               setPortfolio(prev => ({ ...prev, config: newConfig }));
