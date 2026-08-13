@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const { 
   loadState, 
   saveState, 
@@ -10,6 +11,11 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/quant_sentinal';
+
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('MongoDB Connected successfully.'))
+  .catch(err => console.error('MongoDB Connection Error:', err));
 
 app.use(cors());
 app.use(express.json());
@@ -36,7 +42,7 @@ app.get('/api/portfolio', async (req, res) => {
     console.error("Error in GET /api/portfolio:", error);
     // Return current state even if catch-up failed, to prevent UI crash
     try {
-      const state = loadState();
+      const state = await loadState();
       res.json(state);
     } catch (e) {
       res.status(500).json({ error: "Failed to load state", details: error.message });
@@ -70,10 +76,10 @@ app.post('/api/trigger-run', async (req, res) => {
 });
 
 // POST Reset Simulation
-app.post('/api/reset', (req, res) => {
+app.post('/api/reset', async (req, res) => {
   try {
     console.log("Resetting simulation back to August 8, 2026...");
-    const state = resetSimulation();
+    const state = await resetSimulation();
     res.json({ message: "Simulation reset successful.", state });
   } catch (error) {
     console.error("Error resetting simulation:", error);
@@ -82,7 +88,7 @@ app.post('/api/reset', (req, res) => {
 });
 
 // POST Update Configurations
-app.post('/api/config', (req, res) => {
+app.post('/api/config', async (req, res) => {
   try {
     const { 
       targetProfitPercent, 
@@ -93,7 +99,7 @@ app.post('/api/config', (req, res) => {
       rotationMinCandidateScore,
       rotationMaxUnderperformerProfit
     } = req.body;
-    const state = loadState();
+    const state = await loadState();
 
     if (targetProfitPercent !== undefined) state.config.targetProfitPercent = Number(targetProfitPercent);
     if (stopLossPercent !== undefined) state.config.stopLossPercent = Number(stopLossPercent);
@@ -104,7 +110,7 @@ app.post('/api/config', (req, res) => {
     if (rotationMinCandidateScore !== undefined) state.config.rotationMinCandidateScore = Number(rotationMinCandidateScore);
     if (rotationMaxUnderperformerProfit !== undefined) state.config.rotationMaxUnderperformerProfit = Number(rotationMaxUnderperformerProfit);
 
-    saveState(state);
+    await saveState(state);
     console.log("Configurations updated:", state.config);
     res.json({ message: "Configurations updated successfully.", config: state.config });
   } catch (error) {
@@ -114,14 +120,14 @@ app.post('/api/config', (req, res) => {
 });
 
 // POST Deposit Extra Capital Manually
-app.post('/api/deposit', (req, res) => {
+app.post('/api/deposit', async (req, res) => {
   try {
     const { amount } = req.body;
     if (!amount || isNaN(amount) || amount <= 0) {
       return res.status(400).json({ error: "Invalid deposit amount" });
     }
 
-    const state = loadState();
+    const state = await loadState();
     state.cash += Number(amount);
     
     // Update the last history element to adjust totalDeposited
@@ -142,7 +148,7 @@ app.post('/api/deposit', (req, res) => {
       text: `MANUAL CAPITAL INJECTION: Deposited an additional ₹${amount.toLocaleString('en-IN')}.00 cash. Total cash capital available for trades: ₹${state.cash.toFixed(2)}.`
     });
 
-    saveState(state);
+    await saveState(state);
     console.log(`Manual deposit of ₹${amount} completed. Cash: ₹${state.cash}`);
     res.json({ message: "Deposit completed successfully.", state });
   } catch (error) {

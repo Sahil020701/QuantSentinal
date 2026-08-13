@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { calculateSMA, calculateRSI, calculateMACD, checkBreakouts } = require('./utils/indicators');
+const StateModel = require('./models/State');
 
 const DEFAULT_WATCHLIST = [
   { symbol: 'RELIANCE.NS', name: 'Reliance Industries', sector: 'Energy & Conglomerate' },
@@ -83,30 +84,40 @@ function ensureDirectories() {
 }
 
 // Load current state
-function loadState() {
-  ensureDirectories();
-  if (fs.existsSync(STATE_FILE)) {
-    try {
-      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    } catch (e) {
-      console.error("Error reading state file, resetting...", e);
-      return resetSimulation();
+async function loadState() {
+  try {
+    let doc = await StateModel.findOne({ key: 'simulation_state' });
+    if (!doc) {
+      return await resetSimulation();
     }
-  } else {
-    return resetSimulation();
+    return doc.toObject();
+  } catch (e) {
+    console.error("Error reading state from MongoDB, resetting...", e);
+    return await resetSimulation();
   }
 }
 
 // Save state
-function saveState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+async function saveState(state) {
+  try {
+    const stateData = { ...state };
+    delete stateData._id;
+    delete stateData.key;
+    
+    await StateModel.findOneAndUpdate(
+      { key: 'simulation_state' },
+      stateData,
+      { upsert: true, new: true }
+    );
+  } catch (e) {
+    console.error("Error saving state to MongoDB:", e);
+  }
 }
 
 // Reset state
-function resetSimulation() {
-  ensureDirectories();
+async function resetSimulation() {
   const state = JSON.parse(JSON.stringify(INITIAL_STATE));
-  saveState(state);
+  await saveState(state);
   return state;
 }
 
@@ -261,7 +272,7 @@ function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, trans
 
 // Core Simulation Function
 async function runSimulation(targetEndDateStr) {
-  const state = loadState();
+  const state = await loadState();
   const cachedData = await updateCache(targetEndDateStr);
 
   const lastRunDateStr = state.lastSimulationDate;
@@ -656,7 +667,7 @@ async function runSimulation(targetEndDateStr) {
     state.lastSimulationDate = simDate;
   }
 
-  saveState(state);
+  await saveState(state);
   return state;
 }
 
