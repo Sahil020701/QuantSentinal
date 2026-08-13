@@ -1,0 +1,14 @@
+{
+  "name": "quant-sentinal-trading-project",
+  "version": "1.0.0",
+  "description": "Aggressive AI Indian Stock Market Trading Simulation",
+  "scripts": {
+    "install-all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "backend": "npm start --prefix backend",
+    "frontend": "npm run dev --prefix frontend",
+    "dev": "npx concurrently \"npm run backend\" \"npm run frontend\""
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,253 @@
+{
+  "lastSimulationDate": "2026-08-13",
+  "cash": 93.42987060546875,
+  "holdings": [
+    {
+      "symbol": "MPHASIS.NS",
+      "name": "MphasiS Ltd.",
+      "sector": "Information Technology",
+      "quantity": 1,
+      "buyPrice": 2508,
+      "currentPrice": 2523.5,
+      "buyDate": "2026-08-10",
+      "targetPrice": 2884.2,
+      "stopLoss": 2357.52,
+      "value": 2523.5,
+      "profit": 15.5,
+      "profitPercent": 0.6180223285486443,
+      "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 62.7).",
+      "technicalStats": {
+        "rsi": 62.67355736290821,
+        "sma20": 2375.7949951171877,
+        "sma50": 2292.71025390625,
+        "macdHist": 11.045600684313186
+      }
+    },
+    {
+      "symbol": "LENSKART.NS",
+      "name": "Lenskart Solutions Ltd.",
+      "sector": "Consumer Services",
+      "quantity": 5,
+      "buyPrice": 586.1500244140625,
+      "currentPrice": 599.75,
+      "buyDate": "2026-08-10",
+      "targetPrice": 674.0725280761718,
+      "stopLoss": 550.9810229492188,
+      "value": 2998.75,
+      "profit": 67.9998779296875,
+      "profitPercent": 2.3202209365311455,
+      "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
+      "technicalStats": {
+        "rsi": 69.47148141958652,
+        "sma20": 557.8375091552734,
+        "sma50": 533.2170050048828,
+        "macdHist": 0.7332308873473856
+      }
+    },
+    {
+      "symbol": "NAUKRI.NS",
+      "name": "Info Edge (India) Ltd.",
+      "sector": "Consumer Services",
+      "quantity": 2,
+      "buyPrice": 1319.9000244140625,
+      "currentPrice": 1364.4000244140625,
+      "buyDate": "2026-08-11",
+      "targetPrice": 1517.8850280761717,
+      "stopLoss": 1240.7060229492188,
+      "value": 2728.800048828125,
+      "profit": 89,
+      "profitPercent": 3.3714674730576424,
+      "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
+      "technicalStats": {
+        "rsi": 72.37757825156322,
+        "sma20": 1223.25458984375,
+        "sma50": 1107.6313403320312,
+        "macdHist": 0.5426136581825105
+      }
+    },
+    {
+      "symbol": "OIL.NS",
+      "name": "Oil India Ltd.",
+      "sector": "Oil Gas & Consumable Fuels",
+      "quantity": 6,
+      "buyPrice": 482.04998779296875,
+      "currentPrice": 478.20001220703125,
+      "buyDate": "2026-08-11",
+      "targetPrice": 554.357485961914,
+      "stopLoss": 453.1269885253906,
+      "value": 2869.2000732421875,
+      "profit": -23.099853515625,
+      "profitPercent": -0.7986672924864777,
+      "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
+      "technicalStats": {
+        "rsi": 68.58136032641566,
+        "sma20": 448.9124984741211,
+        "sma50": 438.5419989013672,
+        "macdHist": 1.9049142593222048
+      }
+    },
+    {
+      "symbol": "PIDILITIND.NS",
+      "name": "Pidilite Industries Ltd.",
+      "sector": "Chemicals",
+      "quantity": 1,
+      "buyPrice": 1690.0999755859375,
+      "currentPrice": 1692.9000244140625,
+      "buyDate": "2026-08-12",
+      "targetPrice": 1943.614971923828,
+      "stopLoss": 1588.693977050781,
+      "value": 1692.9000244140625,
+      "profit": 2.800048828125,
+      "profitPercent": 0.1656735618349593,
+      "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 65.9).",
+      "technicalStats": {
+        "rsi": 65.87489865269298,
+        "sma20": 1620.3291870117187,
+        "sma50": 1579.5131884765624,
+        "macdHist": 5.897802163870196
+      }
+    },
+    {
+      "symbol": "IDEA.NS",
+      "name": "Vodafone Idea Ltd.",
+      "sector": "Telecommunication",
+      "quantity": 222,
+      "buyPrice": 13.5,
+      "currentPrice": 13.569999694824219,
+      "buyDate": "2026-08-12",
+      "targetPrice": 15.524999999999999,
+      "stopLoss": 12.69,
+      "value": 3012.5399322509766,
+      "profit": 15.539932250976562,
+      "profitPercent": 0.5185162579571759,
+      "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
+      "technicalStats": {
+        "rsi": 55.236659922363025,
+        "sma20": 13.133500003814698,
+        "sma50": 13.8796000289917,
+        "macdHist": 0.049416866180654995
+      }
+    },
+    {
+      "symbol": "CONCOR.NS",
+      "name": "Container Corporation of India Ltd.",
+      "sector": "Services",
+      "quantity": 5,
+      "buyPrice": 532.7000122070312,
+      "currentPrice": 532.7000122070312,
+      "buyDate": "2026-08-13",
+      "targetPrice": 612.6050140380859,
+      "stopLoss": 500.7380114746093,
+      "value": 2663.5000610351562,
+      "profit": 0,
+      "profitPercent": 0,
+      "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 66.7).",
+      "technicalStats": {
+        "rsi": 66.68819934420651,
+        "sma20": 507.00787048339845,
+        "sma50": 482.72743103027346,
+        "macdHist": 0.20004965570694644
+      }
+    },
+    {
+      "symbol": "GROWW.NS",
+      "name": "Billionbrains Garage Ventures Ltd.",
+      "sector": "Financial Services",
+      "quantity": 8,
+      "buyPrice": 198.13999938964844,
+      "currentPrice": 198.13999938964844,
+      "buyDate": "2026-08-13",
+      "targetPrice": 227.8609992980957,
+      "stopLoss": 186.2515994262695,
+      "value": 1585.1199951171875,
+      "profit": 0,
+      "profitPercent": 0,
+      "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
+      "technicalStats": {
+        "rsi": 51.71275554288178,
+        "sma20": 196.96499938964843,
+        "sma50": 198.91199890136718,
+        "macdHist": 0.25074225855572374
+      }
+    }
+  ],
+  "history": [],
+  "valuationHistory": [
+    {
+      "date": "2026-08-08",
+      "cash": 20000,
+      "holdingsValue": 0,
+      "totalValue": 20000,
+      "profitPercent": 0,
+      "totalDeposited": 20000
+    },
+    {
+      "date": "2026-08-10",
+      "cash": 14561.249877929688,
+      "holdingsValue": 5438.7501220703125,
+      "totalValue": 20000,
+      "profitPercent": 0,
+      "totalDeposited": 20000
+    },
+    {
+      "date": "2026-08-11",
+      "cash": 9029.14990234375,
+      "holdingsValue": 10975.7001953125,
+      "totalValue": 20004.85009765625,
+      "profitPercent": 0.02425048828125,
+      "totalDeposited": 20000
+    },
+    {
+      "date": "2026-08-12",
+      "cash": 4342.0499267578125,
+      "holdingsValue": 15627.699951171875,
+      "totalValue": 19969.749877929688,
+      "profitPercent": -0.15125061035156248,
+      "totalDeposited": 20000
+    },
+    {
+      "date": "2026-08-13",
+      "cash": 93.42987060546875,
+      "holdingsValue": 20074.310134887695,
+      "totalValue": 20167.740005493164,
+      "profitPercent": 0.8387000274658203,
+      "totalDeposited": 20000
+    }
+  ],
+  "logs": [
+    {
+      "date": "2026-08-13",
+      "sentiment": "BULLISH",
+      "text": "Market action is highly constructive. Nifty is maintaining its upward trajectory. Bulls are in complete control.\n\n**Transactions Executed:**\n- **BOUGHT** 5 shares of CONCOR at ₹532.70. Target set at ₹612.61, Stop Loss at ₹500.74. *Reason:* Bullish 10-day price breakout on solid momentum (RSI = 66.7).\n- **BOUGHT** 8 shares of GROWW at ₹198.14. Target set at ₹227.86, Stop Loss at ₹186.25. *Reason:* MACD bullish crossover confirmed above the 20-day SMA.\n\n**Desk Metrics:**\n- Total Portfolio Net Worth: ₹20167.74\n- Cash Balance: ₹93.43 | Holdings Value: ₹20074.31\n- Status: Rule #1: Let winners run, cut losers immediately. 6% stop loss is non-negotiable."
+    },
+    {
+      "date": "2026-08-12",
+      "sentiment": "BULLISH",
+      "text": "We see clean breakouts across multiple sectors. Capital is chasing growth, and we are riding the wave.\n\n**Transactions Executed:**\n- **BOUGHT** 1 shares of PIDILITIND at ₹1690.10. Target set at ₹1943.61, Stop Loss at ₹1588.69. *Reason:* Bullish 10-day price breakout on solid momentum (RSI = 65.9).\n- **BOUGHT** 222 shares of IDEA at ₹13.50. Target set at ₹15.52, Stop Loss at ₹12.69. *Reason:* MACD bullish crossover confirmed above the 20-day SMA.\n\n**Desk Metrics:**\n- Total Portfolio Net Worth: ₹19969.75\n- Cash Balance: ₹4342.05 | Holdings Value: ₹15627.70\n- Status: Rule #1: Let winners run, cut losers immediately. 6% stop loss is non-negotiable."
+    },
+    {
+      "date": "2026-08-11",
+      "sentiment": "BULLISH",
+      "text": "Bullish momentum is sweeping through the index. Aggressive trading pays off in conditions like these.\n\n**Transactions Executed:**\n- **BOUGHT** 2 shares of NAUKRI at ₹1319.90. Target set at ₹1517.89, Stop Loss at ₹1240.71. *Reason:* MACD bullish crossover confirmed above the 20-day SMA.\n- **BOUGHT** 6 shares of OIL at ₹482.05. Target set at ₹554.36, Stop Loss at ₹453.13. *Reason:* MACD bullish crossover confirmed above the 20-day SMA.\n\n**Desk Metrics:**\n- Total Portfolio Net Worth: ₹20004.85\n- Cash Balance: ₹9029.15 | Holdings Value: ₹10975.70\n- Status: Rule #1: Let winners run, cut losers immediately. 6% stop loss is non-negotiable."
+    },
+    {
+      "date": "2026-08-10",
+      "sentiment": "BULLISH",
+      "text": "Market action is highly constructive. Nifty is maintaining its upward trajectory. Bulls are in complete control.\n\n**Transactions Executed:**\n- **BOUGHT** 1 shares of MPHASIS at ₹2508.00. Target set at ₹2884.20, Stop Loss at ₹2357.52. *Reason:* Bullish 10-day price breakout on solid momentum (RSI = 62.7).\n- **BOUGHT** 5 shares of LENSKART at ₹586.15. Target set at ₹674.07, Stop Loss at ₹550.98. *Reason:* MACD bullish crossover confirmed above the 20-day SMA.\n\n**Desk Metrics:**\n- Total Portfolio Net Worth: ₹20000.00\n- Cash Balance: ₹14561.25 | Holdings Value: ₹5438.75\n- Status: Rule #1: Let winners run, cut losers immediately. 6% stop loss is non-negotiable."
+    },
+    {
+      "date": "2026-08-08",
+      "sentiment": "NEUTRAL",
+      "text": "Quant Sentinal Aggressive Trading System online. Initial capital of ₹20,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and oversold rebounds. Current state is cash-only; waiting for market open on Monday to execute technical scanners."
+    }
+  ],
+  "config": {
+    "targetProfitPercent": 0.13,
+    "stopLossPercent": 0.06,
+    "maxPositions": 50,
+    "aggressiveness": "aggressive",
+    "rotationEnabled": true,
+    "rotationMinCandidateScore": 85,
+    "rotationMaxUnderperformerProfit": -2
+  }
+}
