@@ -1,6 +1,6 @@
 {
-  "lastSimulationDate": "2026-08-13",
-  "cash": 93.42987060546875,
+  "lastSimulationDate": "2026-08-18",
+  "cash": 374.22979736328125,
   "holdings": [
     {
       "symbol": "MPHASIS.NS",
@@ -8,13 +8,13 @@
       "sector": "Information Technology",
       "quantity": 1,
       "buyPrice": 2508,
-      "currentPrice": 2523.5,
+      "currentPrice": 2432,
       "buyDate": "2026-08-10",
       "targetPrice": 2884.2,
       "stopLoss": 2357.52,
-      "value": 2523.5,
-      "profit": 15.5,
-      "profitPercent": 0.6180223285486443,
+      "value": 2432,
+      "profit": -76,
+      "profitPercent": -3.0303030303030303,
       "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 62.7).",
       "technicalStats": {
         "rsi": 62.67355736290821,
@@ -29,13 +29,13 @@
       "sector": "Consumer Services",
       "quantity": 5,
       "buyPrice": 586.1500244140625,
-      "currentPrice": 599.75,
+      "currentPrice": 628.4000244140625,
       "buyDate": "2026-08-10",
       "targetPrice": 674.0725280761718,
       "stopLoss": 550.9810229492188,
-      "value": 2998.75,
-      "profit": 67.9998779296875,
-      "profitPercent": 2.3202209365311455,
+      "value": 3142.0001220703125,
+      "profit": 211.25,
+      "profitPercent": 7.208052246049921,
       "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
       "technicalStats": {
         "rsi": 69.47148141958652,
@@ -50,13 +50,13 @@
       "sector": "Consumer Services",
       "quantity": 2,
       "buyPrice": 1319.9000244140625,
-      "currentPrice": 1364.4000244140625,
+      "currentPrice": 1354.9000244140625,
       "buyDate": "2026-08-11",
       "targetPrice": 1517.8850280761717,
       "stopLoss": 1240.7060229492188,
-      "value": 2728.800048828125,
-      "profit": 89,
-      "profitPercent": 3.3714674730576424,
+      "value": 2709.800048828125,
+      "profit": 70,
+      "profitPercent": 2.651715990045337,
       "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
       "technicalStats": {
         "rsi": 72.37757825156322,
@@ -66,39 +66,18 @@
       }
     },
     {
-      "symbol": "OIL.NS",
-      "name": "Oil India Ltd.",
-      "sector": "Oil Gas & Consumable Fuels",
-      "quantity": 6,
-      "buyPrice": 482.04998779296875,
-      "currentPrice": 478.20001220703125,
-      "buyDate": "2026-08-11",
-      "targetPrice": 554.357485961914,
-      "stopLoss": 453.1269885253906,
-      "value": 2869.2000732421875,
-      "profit": -23.099853515625,
-      "profitPercent": -0.7986672924864777,
-      "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
-      "technicalStats": {
-        "rsi": 68.58136032641566,
-        "sma20": 448.9124984741211,
-        "sma50": 438.5419989013672,
-        "macdHist": 1.9049142593222048
-      }
-    },
-    {
       "symbol": "PIDILITIND.NS",
       "name": "Pidilite Industries Ltd.",
       "sector": "Chemicals",
       "quantity": 1,
       "buyPrice": 1690.0999755859375,
-      "currentPrice": 1692.9000244140625,
+      "currentPrice": 1674,
       "buyDate": "2026-08-12",
       "targetPrice": 1943.614971923828,
       "stopLoss": 1588.693977050781,
-      "value": 1692.9000244140625,
-      "profit": 2.800048828125,
-      "profitPercent": 0.1656735618349593,
+      "value": 1674,
+      "profit": -16.0999755859375,
+      "profitPercent": -0.9526049238806615,
       "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 65.9).",
       "technicalStats": {
         "rsi": 65.87489865269298,
@@ -113,13 +92,13 @@
       "sector": "Telecommunication",
       "quantity": 222,
       "buyPrice": 13.5,
-      "currentPrice": 13.569999694824219,
+      "currentPrice": 14.119999885559082,
       "buyDate": "2026-08-12",
       "targetPrice": 15.524999999999999,
       "stopLoss": 12.69,
-      "value": 3012.5399322509766,
-      "profit": 15.539932250976562,
-      "profitPercent": 0.5185162579571759,
+      "value": 3134.639974594116,
+      "profit": 137.6399745941162,
+      "profitPercent": 4.592591744882089,
       "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
       "technicalStats": {
         "rsi": 55.236659922363025,
@@ -134,13 +113,13 @@
       "sector": "Services",
       "quantity": 5,
       "buyPrice": 532.7000122070312,
-      "currentPrice": 532.7000122070312,
+      "currentPrice": 518.25,
       "buyDate": "2026-08-13",
       "targetPrice": 612.6050140380859,
       "stopLoss": 500.7380114746093,
-      "value": 2663.5000610351562,
-      "profit": 0,
-      "profitPercent": 0,
+      "value": 2591.25,
+      "profit": -72.25006103515625,
+      "profitPercent": -2.7125984373762924,
       "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 66.7).",
       "technicalStats": {
         "rsi": 66.68819934420651,
@@ -155,13 +134,13 @@
       "sector": "Financial Services",
       "quantity": 8,
       "buyPrice": 198.13999938964844,
-      "currentPrice": 198.13999938964844,
+      "currentPrice": 193.80999755859375,
       "buyDate": "2026-08-13",
       "targetPrice": 227.8609992980957,
       "stopLoss": 186.2515994262695,
-      "value": 1585.1199951171875,
-      "profit": 0,
-      "profitPercent": 0,
+      "value": 1550.47998046875,
+      "profit": -34.6400146484375,
+      "profitPercent": -2.1853244394836224,
       "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
       "technicalStats": {
         "rsi": 51.71275554288178,
@@ -169,9 +148,44 @@
         "sma50": 198.91199890136718,
         "macdHist": 0.25074225855572374
       }
+    },
+    {
+      "symbol": "BHEL.NS",
+      "name": "Bharat Heavy Electricals Ltd.",
+      "sector": "Capital Goods",
+      "quantity": 6,
+      "buyPrice": 421.70001220703125,
+      "currentPrice": 425,
+      "buyDate": "2026-08-14",
+      "targetPrice": 476.52101379394526,
+      "stopLoss": 396.39801147460935,
+      "value": 2550,
+      "profit": 19.7999267578125,
+      "profitPercent": 0.7825439168706116,
+      "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 59.0).",
+      "technicalStats": {
+        "rsi": 59.00262628357644,
+        "sma20": 411.67750091552733,
+        "sma50": 402.79109741210937,
+        "macdHist": 0.7579105960284416
+      }
     }
   ],
-  "history": [],
+  "history": [
+    {
+      "symbol": "OIL.NS",
+      "name": "Oil India Ltd.",
+      "sector": "Oil Gas & Consumable Fuels",
+      "quantity": 6,
+      "buyPrice": 482.04998779296875,
+      "sellPrice": 468.5,
+      "buyDate": "2026-08-11",
+      "sellDate": "2026-08-14",
+      "profit": -81.2999267578125,
+      "profitPercent": -2.8109092700129286,
+      "reason": "Replaced by BHEL.NS (Score: 99.0)"
+    }
+  ],
   "valuationHistory": [
     {
       "date": "2026-08-08",
@@ -212,9 +226,48 @@
       "totalValue": 20167.740005493164,
       "profitPercent": 0.8387000274658203,
       "totalDeposited": 20000
+    },
+    {
+      "date": "2026-08-14",
+      "cash": 374.22979736328125,
+      "holdingsValue": 19850.229860305786,
+      "totalValue": 20224.459657669067,
+      "profitPercent": 1.122298288345337,
+      "totalDeposited": 20000
+    },
+    {
+      "date": "2026-08-17",
+      "cash": 374.22979736328125,
+      "holdingsValue": 19799.940076828003,
+      "totalValue": 20174.169874191284,
+      "profitPercent": 0.8708493709564209,
+      "totalDeposited": 20000
+    },
+    {
+      "date": "2026-08-18",
+      "cash": 374.22979736328125,
+      "holdingsValue": 19784.170125961304,
+      "totalValue": 20158.399923324585,
+      "profitPercent": 0.7919996166229247,
+      "totalDeposited": 20000
     }
   ],
   "logs": [
+    {
+      "date": "2026-08-18",
+      "sentiment": "BULLISH",
+      "text": "We see clean breakouts across multiple sectors. Capital is chasing growth, and we are riding the wave.\n\nNo trade executions today. Current portfolio allocation is stable. Active holdings: MPHASIS, LENSKART, NAUKRI, PIDILITIND, IDEA, CONCOR, GROWW, BHEL. \n\n**Desk Metrics:**\n- Total Portfolio Net Worth: ₹20158.40\n- Cash Balance: ₹374.23 | Holdings Value: ₹19784.17\n- Status: Rule #1: Let winners run, cut losers immediately. 6% stop loss is non-negotiable."
+    },
+    {
+      "date": "2026-08-17",
+      "sentiment": "VOLATILE",
+      "text": "Volatile session with massive swings. Traders are fighting over key support levels. Tight stop losses are saving our positions.\n\nNo trade executions today. Current portfolio allocation is stable. Active holdings: MPHASIS, LENSKART, NAUKRI, PIDILITIND, IDEA, CONCOR, GROWW, BHEL. \n\n**Desk Metrics:**\n- Total Portfolio Net Worth: ₹20174.17\n- Cash Balance: ₹374.23 | Holdings Value: ₹19799.94\n- Status: Rule #1: Let winners run, cut losers immediately. 6% stop loss is non-negotiable."
+    },
+    {
+      "date": "2026-08-14",
+      "sentiment": "BEARISH",
+      "text": "Market structure is turning defensive. The index faced strong overhead rejection. Cash conservation is key here.\n\n**Transactions Executed:**\n- **SOLD** 6 shares of OIL at ₹468.50: Triggered Replaced by BHEL.NS (Score: 99.0). Realized LOSS of -₹81.30 (-2.8%).\n- **BOUGHT** 6 shares of BHEL at ₹421.70. Target set at ₹476.52, Stop Loss at ₹396.40. *Reason:* Bullish 10-day price breakout on solid momentum (RSI = 59.0).\n\n**Desk Metrics:**\n- Total Portfolio Net Worth: ₹20224.46\n- Cash Balance: ₹374.23 | Holdings Value: ₹19850.23\n- Status: Rule #1: Let winners run, cut losers immediately. 6% stop loss is non-negotiable."
+    },
     {
       "date": "2026-08-13",
       "sentiment": "BULLISH",

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
+const mongoose = require('mongoose');
 const { calculateSMA, calculateRSI, calculateMACD, checkBreakouts } = require('./utils/indicators');
 const StateModel = require('./models/State');
 
@@ -85,32 +86,50 @@ function ensureDirectories() {
 
 // Load current state
 async function loadState() {
-  try {
-    let doc = await StateModel.findOne({ key: 'simulation_state' });
-    if (!doc) {
-      return await resetSimulation();
+  if (mongoose.connection.readyState === 1) {
+    try {
+      let doc = await StateModel.findOne({ key: 'simulation_state' });
+      if (doc) return doc.toObject();
+    } catch (e) {
+      console.warn("MongoDB read failed, falling back to local file state:", e.message);
     }
-    return doc.toObject();
-  } catch (e) {
-    console.error("Error reading state from MongoDB, resetting...", e);
-    return await resetSimulation();
   }
+  
+  if (fs.existsSync(STATE_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    } catch (e) {
+      console.warn("Local state file corrupted:", e.message);
+    }
+  }
+
+  return await resetSimulation();
 }
 
 // Save state
 async function saveState(state) {
+  // Always persist state to disk state.json
   try {
-    const stateData = { ...state };
-    delete stateData._id;
-    delete stateData.key;
-    
-    await StateModel.findOneAndUpdate(
-      { key: 'simulation_state' },
-      stateData,
-      { upsert: true, returnDocument: 'after' }
-    );
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   } catch (e) {
-    console.error("Error saving state to MongoDB:", e);
+    console.error("Error saving state file:", e.message);
+  }
+
+  // Persist to MongoDB if connected
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const stateData = { ...state };
+      delete stateData._id;
+      delete stateData.key;
+      
+      await StateModel.findOneAndUpdate(
+        { key: 'simulation_state' },
+        stateData,
+        { upsert: true, returnDocument: 'after' }
+      );
+    } catch (e) {
+      console.error("Error saving state to MongoDB:", e.message);
+    }
   }
 }
 
@@ -133,18 +152,24 @@ function formatUTCDate(date) {
 let activeUpdatePromise = null;
 
 // Fetch and Cache Yahoo Finance Data via Python yfinance helper script (real-time batch data)
-async function updateCache(endDateStr) {
+async function updateCache(endDateStr, forceRefresh = false) {
   ensureDirectories();
   
   const todayStr = formatUTCDate(new Date());
+  const CACHE_MIN_TTL_MS = 15 * 60 * 1000; // 15 minutes minimum threshold between network fetches
   
-  // Check if cache file exists and was updated today
+  // Check if cache file exists and is fresh for today (unless forceRefresh is requested & cache is >15 mins old)
   if (fs.existsSync(CACHE_FILE)) {
     try {
+      const stats = fs.statSync(CACHE_FILE);
+      const ageMs = Date.now() - stats.mtimeMs;
       const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+      
       if (cache.lastUpdated === todayStr && Object.keys(cache.data).length > 0) {
-        console.log("Using cached market data.");
-        return cache.data;
+        if (!forceRefresh || ageMs < CACHE_MIN_TTL_MS) {
+          console.log(`Using cached market data (Cache age: ${Math.round(ageMs / 1000 / 60)} mins).`);
+          return cache.data;
+        }
       }
     } catch (e) {
       console.warn("Corrupted cache file, rebuilding...", e);
@@ -271,12 +296,12 @@ function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, trans
 }
 
 // Core Simulation Function
-async function runSimulation(targetEndDateStr) {
+async function runSimulation(targetEndDateStr, forceRefresh = false) {
   const state = await loadState();
-  const cachedData = await updateCache(targetEndDateStr);
+  const cachedData = await updateCache(targetEndDateStr, forceRefresh);
 
   const lastRunDateStr = state.lastSimulationDate;
-  if (lastRunDateStr >= targetEndDateStr) {
+  if (!forceRefresh && lastRunDateStr >= targetEndDateStr) {
     console.log(`Simulation is already up to date (${lastRunDateStr}).`);
     return state;
   }

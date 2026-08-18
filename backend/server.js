@@ -158,13 +158,51 @@ app.post('/api/deposit', async (req, res) => {
   }
 });
 
+// Automated Background Scheduler for Market Open & Trigger Execution
+async function runAutomatedEngineCycle(forceRefresh = false) {
+  try {
+    const todayStr = getTodayUTCDateString();
+    console.log(`[AUTOMATED SCHEDULER] Running engine cycle for date ${todayStr}...`);
+    const state = await runSimulation(todayStr, forceRefresh);
+    console.log(`[AUTOMATED SCHEDULER] Cycle complete. Last simulation date: ${state.lastSimulationDate}`);
+  } catch (error) {
+    console.error("[AUTOMATED SCHEDULER] Error during engine cycle execution:", error.message);
+  }
+}
+
+function startTradingScheduler() {
+  console.log("Starting Quant Sentinal Automated Trading Scheduler...");
+  
+  // 1. Execute immediately on startup catchup
+  runAutomatedEngineCycle(true);
+
+  // 2. Schedule periodic checks (Every 30 minutes during market hours)
+  const SCHEDULER_INTERVAL_MS = 30 * 60 * 1000;
+  setInterval(() => {
+    const today = new Date();
+    const day = today.getDay();
+    const hours = today.getHours();
+    const minutes = today.getMinutes();
+    const time = hours * 100 + minutes;
+
+    // Check if market is open (Mon-Fri, 09:15 to 15:30 IST)
+    const isMarketOpen = (day >= 1 && day <= 5 && time >= 915 && time <= 1530);
+    console.log(`[SCHEDULER TIMER] Triggered. Market Open Status: ${isMarketOpen}`);
+
+    // Always run cycle (forces live cache refresh during market hours)
+    runAutomatedEngineCycle(isMarketOpen);
+  }, SCHEDULER_INTERVAL_MS);
+}
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`Quant Sentinal Trading Backend listening on port ${PORT}`);
-  // Initialize state on boot
+  // Initialize state on boot and start scheduler
   try {
-    const state = loadState();
-    console.log(`Database loaded. Simulation current date: ${state.lastSimulationDate}`);
+    loadState().then((state) => {
+      console.log(`Database loaded. Simulation current date: ${state.lastSimulationDate}`);
+      startTradingScheduler();
+    });
   } catch (err) {
     console.error("Failed to load initial state on boot:", err);
   }
