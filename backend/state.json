@@ -1,6 +1,6 @@
 {
-  "lastSimulationDate": "2026-08-18",
-  "cash": 374.22979736328125,
+  "lastSimulationDate": "2026-08-19",
+  "cash": 1088.2296752929688,
   "holdings": [
     {
       "symbol": "MPHASIS.NS",
@@ -8,13 +8,13 @@
       "sector": "Information Technology",
       "quantity": 1,
       "buyPrice": 2508,
-      "currentPrice": 2432,
+      "currentPrice": 2470.699951171875,
       "buyDate": "2026-08-10",
       "targetPrice": 2884.2,
       "stopLoss": 2357.52,
-      "value": 2432,
-      "profit": -76,
-      "profitPercent": -3.0303030303030303,
+      "value": 2470.699951171875,
+      "profit": -37.300048828125,
+      "profitPercent": -1.4872427762410287,
       "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 62.7).",
       "technicalStats": {
         "rsi": 62.67355736290821,
@@ -29,13 +29,13 @@
       "sector": "Consumer Services",
       "quantity": 5,
       "buyPrice": 586.1500244140625,
-      "currentPrice": 628.4000244140625,
+      "currentPrice": 628.7999877929688,
       "buyDate": "2026-08-10",
       "targetPrice": 674.0725280761718,
       "stopLoss": 550.9810229492188,
-      "value": 3142.0001220703125,
-      "profit": 211.25,
-      "profitPercent": 7.208052246049921,
+      "value": 3143.9999389648438,
+      "profit": 213.24981689453125,
+      "profitPercent": 7.27628791307153,
       "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
       "technicalStats": {
         "rsi": 69.47148141958652,
@@ -50,13 +50,13 @@
       "sector": "Consumer Services",
       "quantity": 2,
       "buyPrice": 1319.9000244140625,
-      "currentPrice": 1354.9000244140625,
+      "currentPrice": 1361.9000244140625,
       "buyDate": "2026-08-11",
       "targetPrice": 1517.8850280761717,
       "stopLoss": 1240.7060229492188,
-      "value": 2709.800048828125,
-      "profit": 70,
-      "profitPercent": 2.651715990045337,
+      "value": 2723.800048828125,
+      "profit": 84,
+      "profitPercent": 3.1820591880544042,
       "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
       "technicalStats": {
         "rsi": 72.37757825156322,
@@ -71,13 +71,13 @@
       "sector": "Chemicals",
       "quantity": 1,
       "buyPrice": 1690.0999755859375,
-      "currentPrice": 1674,
+      "currentPrice": 1657.699951171875,
       "buyDate": "2026-08-12",
       "targetPrice": 1943.614971923828,
       "stopLoss": 1588.693977050781,
-      "value": 1674,
-      "profit": -16.0999755859375,
-      "profitPercent": -0.9526049238806615,
+      "value": 1657.699951171875,
+      "profit": -32.4000244140625,
+      "profitPercent": -1.9170478008456158,
       "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 65.9).",
       "technicalStats": {
         "rsi": 65.87489865269298,
@@ -92,13 +92,13 @@
       "sector": "Telecommunication",
       "quantity": 222,
       "buyPrice": 13.5,
-      "currentPrice": 14.119999885559082,
+      "currentPrice": 14.069999694824219,
       "buyDate": "2026-08-12",
       "targetPrice": 15.524999999999999,
       "stopLoss": 12.69,
-      "value": 3134.639974594116,
-      "profit": 137.6399745941162,
-      "profitPercent": 4.592591744882089,
+      "value": 3123.5399322509766,
+      "profit": 126.53993225097656,
+      "profitPercent": 4.22221996166088,
       "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
       "technicalStats": {
         "rsi": 55.236659922363025,
@@ -108,39 +108,18 @@
       }
     },
     {
-      "symbol": "CONCOR.NS",
-      "name": "Container Corporation of India Ltd.",
-      "sector": "Services",
-      "quantity": 5,
-      "buyPrice": 532.7000122070312,
-      "currentPrice": 518.25,
-      "buyDate": "2026-08-13",
-      "targetPrice": 612.6050140380859,
-      "stopLoss": 500.7380114746093,
-      "value": 2591.25,
-      "profit": -72.25006103515625,
-      "profitPercent": -2.7125984373762924,
-      "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 66.7).",
-      "technicalStats": {
-        "rsi": 66.68819934420651,
-        "sma20": 507.00787048339845,
-        "sma50": 482.72743103027346,
-        "macdHist": 0.20004965570694644
-      }
-    },
-    {
       "symbol": "GROWW.NS",
       "name": "Billionbrains Garage Ventures Ltd.",
       "sector": "Financial Services",
       "quantity": 8,
       "buyPrice": 198.13999938964844,
-      "currentPrice": 193.80999755859375,
+      "currentPrice": 194.75,
       "buyDate": "2026-08-13",
       "targetPrice": 227.8609992980957,
       "stopLoss": 186.2515994262695,
-      "value": 1550.47998046875,
-      "profit": -34.6400146484375,
-      "profitPercent": -2.1853244394836224,
+      "value": 1558,
+      "profit": -27.1199951171875,
+      "profitPercent": -1.7109111739633647,
       "buyReason": "MACD bullish crossover confirmed above the 20-day SMA.",
       "technicalStats": {
         "rsi": 51.71275554288178,
@@ -155,19 +134,40 @@
       "sector": "Capital Goods",
       "quantity": 6,
       "buyPrice": 421.70001220703125,
-      "currentPrice": 425,
+      "currentPrice": 422,
       "buyDate": "2026-08-14",
       "targetPrice": 476.52101379394526,
       "stopLoss": 396.39801147460935,
-      "value": 2550,
-      "profit": 19.7999267578125,
-      "profitPercent": 0.7825439168706116,
+      "value": 2532,
+      "profit": 1.7999267578125,
+      "profitPercent": 0.0711377245162309,
       "buyReason": "Bullish 10-day price breakout on solid momentum (RSI = 59.0).",
       "technicalStats": {
         "rsi": 59.00262628357644,
         "sma20": 411.67750091552733,
         "sma50": 402.79109741210937,
         "macdHist": 0.7579105960284416
+      }
+    },
+    {
+      "symbol": "SUNPHARMA.NS",
+      "name": "Sun Pharmaceutical Industries Ltd.",
+      "sector": "Healthcare",
+      "quantity": 1,
+      "buyPrice": 1874,
+      "currentPrice": 1874,
+      "buyDate": "2026-08-19",
+      "targetPrice": 2117.62,
+      "stopLoss": 1761.56,
+      "value": 1874,
+      "profit": 0,
+      "profitPercent": 0,
+      "buyReason": "Oversold dip recovery (RSI = 33.3) near support.",
+      "technicalStats": {
+        "rsi": 33.28411979585091,
+        "sma20": 1945.6999938964843,
+        "sma50": 1907.3463134765625,
+        "macdHist": -13.290302447287406
       }
     }
   ],
@@ -184,6 +184,19 @@
       "profit": -81.2999267578125,
       "profitPercent": -2.8109092700129286,
       "reason": "Replaced by BHEL.NS (Score: 99.0)"
+    },
+    {
+      "symbol": "CONCOR.NS",
+      "name": "Container Corporation of India Ltd.",
+      "sector": "Services",
+      "quantity": 5,
+      "buyPrice": 532.7000122070312,
+      "sellPrice": 517.5999755859375,
+      "buyDate": "2026-08-13",
+      "sellDate": "2026-08-19",
+      "profit": -75.50018310546875,
+      "profitPercent": -2.8346229162888013,
+      "reason": "Replaced by SUNPHARMA.NS (Score: 86.7)"
     }
   ],
   "valuationHistory": [
@@ -250,9 +263,22 @@
       "totalValue": 20158.399923324585,
       "profitPercent": 0.7919996166229247,
       "totalDeposited": 20000
+    },
+    {
+      "date": "2026-08-19",
+      "cash": 1088.2296752929688,
+      "holdingsValue": 19083.739822387695,
+      "totalValue": 20171.969497680664,
+      "profitPercent": 0.8598474884033203,
+      "totalDeposited": 20000
     }
   ],
   "logs": [
+    {
+      "date": "2026-08-19",
+      "sentiment": "BEARISH",
+      "text": "Bearish sentiment is dominating today's session. Sellers are dragging down core sectors. We are managing risk closely.\n\n**Transactions Executed:**\n- **SOLD** 5 shares of CONCOR at ₹517.60: Triggered Replaced by SUNPHARMA.NS (Score: 86.7). Realized LOSS of -₹75.50 (-2.8%).\n- **BOUGHT** 1 shares of SUNPHARMA at ₹1874.00. Target set at ₹2117.62, Stop Loss at ₹1761.56. *Reason:* Oversold dip recovery (RSI = 33.3) near support.\n\n**Desk Metrics:**\n- Total Portfolio Net Worth: ₹20171.97\n- Cash Balance: ₹1088.23 | Holdings Value: ₹19083.74\n- Status: Rule #1: Let winners run, cut losers immediately. 6% stop loss is non-negotiable."
+    },
     {
       "date": "2026-08-18",
       "sentiment": "BULLISH",
