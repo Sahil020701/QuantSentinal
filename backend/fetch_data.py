@@ -4,14 +4,31 @@ import glob
 import site
 import json
 
-# Ensure user-installed site packages (e.g. on Render /opt/render/.local) are present in sys.path
-user_site = site.getusersitepackages()
-if user_site and user_site not in sys.path:
-    sys.path.insert(0, user_site)
+# Ensure site-packages are discovered across user, venv, and system paths
+def _setup_python_path():
+    try:
+        user_site = site.getusersitepackages()
+        if user_site and user_site not in sys.path:
+            sys.path.insert(0, user_site)
+    except Exception:
+        pass
 
-for site_pkg in glob.glob("/opt/render/.local/lib/python*/site-packages"):
-    if site_pkg not in sys.path:
-        sys.path.insert(0, site_pkg)
+    search_patterns = [
+        os.path.join(os.path.dirname(__file__), "venv", "lib", "python*", "site-packages"),
+        "/opt/render/project/src/backend/venv/lib/python*/site-packages",
+        "/opt/render/.local/lib/python*/site-packages",
+        "/opt/render/.local/lib/python*/dist-packages",
+        "/root/.local/lib/python*/site-packages",
+        "/usr/local/lib/python*/site-packages",
+        "/usr/local/lib/python*/dist-packages"
+    ]
+
+    for pattern in search_patterns:
+        for p in glob.glob(pattern):
+            if os.path.isdir(p) and p not in sys.path:
+                sys.path.insert(0, p)
+
+_setup_python_path()
 
 import pandas as pd
 import yfinance as yf

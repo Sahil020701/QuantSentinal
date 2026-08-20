@@ -190,18 +190,22 @@ async function updateCache(endDateStr, forceRefresh = false) {
     const endD = new Date(endDateStr);
     const startD = new Date(endD.getTime() - (120 * 24 * 60 * 60 * 1000));
     const startDateStr = formatUTCDate(startD);
+    // Determine Python executable (prefer isolated backend venv if available)
+    const venvUnix = path.join(__dirname, 'venv', 'bin', 'python3');
+    const venvWin = path.join(__dirname, 'venv', 'Scripts', 'python.exe');
+    let pythonBin = 'python3';
+
+    if (fs.existsSync(venvUnix)) {
+      pythonBin = `"${venvUnix}"`;
+    } else if (fs.existsSync(venvWin)) {
+      pythonBin = `"${venvWin}"`;
+    }
+
     const pythonScript = path.join(__dirname, 'fetch_data.py');
     
-    // Execute Python yfinance batch script in a promise with PYTHONPATH environment set
+    // Execute Python yfinance batch script in a promise
     await new Promise((resolve, reject) => {
-      const renderSitePkg = '/opt/render/.local/lib/python3.11/site-packages';
-      const existingPyPath = process.env.PYTHONPATH || '';
-      const execEnv = {
-        ...process.env,
-        PYTHONPATH: existingPyPath ? `${renderSitePkg}:${existingPyPath}` : renderSitePkg
-      };
-
-      exec(`python3 "${pythonScript}" "${startDateStr}" "${endDateStr}" "${CACHE_FILE}"`, { env: execEnv }, (error, stdout, stderr) => {
+      exec(`${pythonBin} "${pythonScript}" "${startDateStr}" "${endDateStr}" "${CACHE_FILE}"`, (error, stdout, stderr) => {
         if (error) {
           console.error(`Python script error: ${error.message}`);
           console.error(`Stderr: ${stderr}`);
