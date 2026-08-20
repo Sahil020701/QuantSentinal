@@ -3,3 +3,5 @@ node_modules
 backend/.env
 frontend/.env
 .DS_Store
+backend/data/
+backend/state*.json

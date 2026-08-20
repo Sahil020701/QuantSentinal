@@ -186,7 +186,10 @@ async function updateCache(endDateStr, forceRefresh = false) {
   activeUpdatePromise = (async () => {
     console.log("Cache outdated or missing. Fetching live market data using Python yfinance script...");
     
-    const startDateStr = '2026-05-01';
+    // Dynamically calculate start date (120 days lookback to ensure 50+ trading bars for technical indicators)
+    const endD = new Date(endDateStr);
+    const startD = new Date(endD.getTime() - (120 * 24 * 60 * 60 * 1000));
+    const startDateStr = formatUTCDate(startD);
     const pythonScript = path.join(__dirname, 'fetch_data.py');
     
     // Execute Python yfinance batch script in a promise
