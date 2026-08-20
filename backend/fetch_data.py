@@ -1,5 +1,18 @@
 import sys
+import os
+import glob
+import site
 import json
+
+# Ensure user-installed site packages (e.g. on Render /opt/render/.local) are present in sys.path
+user_site = site.getusersitepackages()
+if user_site and user_site not in sys.path:
+    sys.path.insert(0, user_site)
+
+for site_pkg in glob.glob("/opt/render/.local/lib/python*/site-packages"):
+    if site_pkg not in sys.path:
+        sys.path.insert(0, site_pkg)
+
 import pandas as pd
 import yfinance as yf
 

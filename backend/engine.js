@@ -192,9 +192,16 @@ async function updateCache(endDateStr, forceRefresh = false) {
     const startDateStr = formatUTCDate(startD);
     const pythonScript = path.join(__dirname, 'fetch_data.py');
     
-    // Execute Python yfinance batch script in a promise
+    // Execute Python yfinance batch script in a promise with PYTHONPATH environment set
     await new Promise((resolve, reject) => {
-      exec(`python3 "${pythonScript}" "${startDateStr}" "${endDateStr}" "${CACHE_FILE}"`, (error, stdout, stderr) => {
+      const renderSitePkg = '/opt/render/.local/lib/python3.11/site-packages';
+      const existingPyPath = process.env.PYTHONPATH || '';
+      const execEnv = {
+        ...process.env,
+        PYTHONPATH: existingPyPath ? `${renderSitePkg}:${existingPyPath}` : renderSitePkg
+      };
+
+      exec(`python3 "${pythonScript}" "${startDateStr}" "${endDateStr}" "${CACHE_FILE}"`, { env: execEnv }, (error, stdout, stderr) => {
         if (error) {
           console.error(`Python script error: ${error.message}`);
           console.error(`Stderr: ${stderr}`);
