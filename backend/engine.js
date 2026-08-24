@@ -67,7 +67,7 @@ const INITIAL_STATE = {
     }
   ],
   config: {
-    targetProfitPercent: 0.15, // +15% target
+    targetProfitPercent: 0.15, // +15% default (overridden by saved state/config UI)
     stopLossPercent: 0.06,      // -6% stop loss
     maxPositions: 50,          // Invest cash across up to 50 stocks
     aggressiveness: 'aggressive', // conservative, moderate, aggressive, hyper

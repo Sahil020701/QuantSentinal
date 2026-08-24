@@ -106,6 +106,19 @@ app.post('/api/config', async (req, res) => {
     if (stopLossPercent !== undefined) state.config.stopLossPercent = Number(stopLossPercent);
     if (maxPositions !== undefined) state.config.maxPositions = Number(maxPositions);
     if (aggressiveness !== undefined) state.config.aggressiveness = aggressiveness;
+
+    // Retroactively update targetPrice and stopLoss on all open holdings
+    // so that config changes take effect immediately, not just on future buys.
+    if (targetProfitPercent !== undefined || stopLossPercent !== undefined) {
+      if (state.holdings && state.holdings.length > 0) {
+        state.holdings = state.holdings.map(h => ({
+          ...h,
+          targetPrice: h.buyPrice * (1 + state.config.targetProfitPercent),
+          stopLoss: h.buyPrice * (1 - state.config.stopLossPercent),
+        }));
+        console.log(`Retroactively updated targetPrice/stopLoss for ${state.holdings.length} open holdings.`);
+      }
+    }
     
     if (rotationEnabled !== undefined) state.config.rotationEnabled = Boolean(rotationEnabled);
     if (rotationMinCandidateScore !== undefined) state.config.rotationMinCandidateScore = Number(rotationMinCandidateScore);
