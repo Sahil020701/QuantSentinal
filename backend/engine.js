@@ -784,11 +784,99 @@ async function getWatchlistQuotes(endDateStr) {
   return result;
 }
 
+// Re-evaluate all open holdings against current config targets using the last known price.
+// Called immediately after a config change so new profit/stop targets take effect without
+// needing to wait for the next trading day simulation.
+async function reEvaluateHoldings() {
+  const state = await loadState();
+  if (!state.holdings || state.holdings.length === 0) {
+    console.log('[reEvaluate] No open holdings to re-evaluate.');
+    return state;
+  }
+
+  const simDate = state.lastSimulationDate;
+  const cachedData = await updateCache(simDate);
+
+  const remainingHoldings = [];
+  const closedTrades = [];
+
+  for (const position of state.holdings) {
+    const stockData = cachedData[position.symbol];
+    // Use the last available bar for this position (most recent trading day)
+    const dayBar = stockData ? [...stockData].reverse().find(row => row.date <= simDate) : null;
+
+    if (!dayBar) {
+      remainingHoldings.push(position);
+      continue;
+    }
+
+    const high = dayBar.high;
+    const low = dayBar.low;
+    const close = dayBar.close;
+
+    let triggerSell = false;
+    let sellPrice = close;
+    let sellReason = '';
+
+    // Re-check using the baked-in targetPrice (which was already updated retroactively when config changed)
+    if (low <= position.stopLoss) {
+      triggerSell = true;
+      sellPrice = position.stopLoss;
+      sellReason = 'Stop Loss Triggered';
+    } else if (high >= position.targetPrice) {
+      triggerSell = true;
+      sellPrice = position.targetPrice;
+      sellReason = 'Target Profit Hit';
+    }
+
+    if (triggerSell) {
+      const revenue = position.quantity * sellPrice;
+      const cost = position.quantity * position.buyPrice;
+      const profit = revenue - cost;
+      const profitPercent = (profit / cost) * 100;
+
+      state.cash += revenue;
+
+      const completedTrade = {
+        symbol: position.symbol,
+        name: position.name,
+        sector: position.sector,
+        quantity: position.quantity,
+        buyPrice: position.buyPrice,
+        sellPrice: sellPrice,
+        buyDate: position.buyDate,
+        sellDate: simDate,
+        profit: profit,
+        profitPercent: profitPercent,
+        reason: `${sellReason} (Config Re-evaluation)`
+      };
+
+      state.history.push(completedTrade);
+      closedTrades.push(completedTrade);
+      console.log(`[reEvaluate] SOLD ${position.symbol} @ ₹${sellPrice.toFixed(2)} — ${sellReason}. P&L: ₹${profit.toFixed(2)} (${profitPercent.toFixed(2)}%)`);
+    } else {
+      // Update current price but keep position
+      position.currentPrice = close;
+      position.value = position.quantity * close;
+      position.profit = position.value - (position.quantity * position.buyPrice);
+      position.profitPercent = (position.profit / (position.quantity * position.buyPrice)) * 100;
+      remainingHoldings.push(position);
+    }
+  }
+
+  state.holdings = remainingHoldings;
+  await saveState(state);
+
+  console.log(`[reEvaluate] Done. Closed ${closedTrades.length} position(s), ${remainingHoldings.length} still open.`);
+  return { state, closedTrades };
+}
+
 module.exports = {
   WATCHLIST,
   loadState,
   saveState,
   resetSimulation,
   runSimulation,
+  reEvaluateHoldings,
   getWatchlistQuotes
 };

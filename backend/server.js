@@ -7,6 +7,7 @@ const {
   saveState, 
   resetSimulation, 
   runSimulation, 
+  reEvaluateHoldings,
   getWatchlistQuotes 
 } = require('./engine');
 
@@ -126,7 +127,22 @@ app.post('/api/config', async (req, res) => {
 
     await saveState(state);
     console.log("Configurations updated:", state.config);
-    res.json({ message: "Configurations updated successfully.", config: state.config });
+
+    // Immediately re-evaluate open positions against the new target/stop values.
+    // This handles the case where the simulation is already up to date (no new trading
+    // days) but a position has already crossed the new threshold on the last simulated day.
+    let reEvalResult = null;
+    if (targetProfitPercent !== undefined || stopLossPercent !== undefined) {
+      reEvalResult = await reEvaluateHoldings();
+      console.log(`Re-evaluation complete: ${reEvalResult.closedTrades.length} position(s) booked.`);
+    }
+
+    res.json({
+      message: "Configurations updated successfully.",
+      config: state.config,
+      reEvaluated: reEvalResult ? reEvalResult.closedTrades.length : 0,
+      closedTrades: reEvalResult ? reEvalResult.closedTrades : []
+    });
   } catch (error) {
     console.error("Error updating config:", error);
     res.status(500).json({ error: "Failed to update configuration" });
