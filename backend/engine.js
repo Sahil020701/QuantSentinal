@@ -876,6 +876,13 @@ async function reEvaluateHoldings() {
     }
   }
 
+  state.holdings = remainingHoldings;
+  await saveState(state);
+
+  console.log(`[reEvaluate] Done. Closed ${closedTrades.length} position(s), ${remainingHoldings.length} still open.`);
+  return { state, closedTrades };
+}
+
 // Deploy available cash into candidate setups immediately on current simulation date
 async function deployIdleCash(simDate) {
   const state = await loadState();
