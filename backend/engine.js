@@ -89,7 +89,14 @@ async function loadState() {
   if (mongoose.connection.readyState === 1) {
     try {
       let doc = await StateModel.findOne({ key: 'simulation_state' });
-      if (doc) return doc.toObject();
+      if (doc) {
+        const mongoState = doc.toObject();
+        // Keep local file in sync with MongoDB
+        try {
+          fs.writeFileSync(STATE_FILE, JSON.stringify(mongoState, null, 2));
+        } catch (_) {}
+        return mongoState;
+      }
     } catch (e) {
       console.warn("MongoDB read failed, falling back to local file state:", e.message);
     }
@@ -97,7 +104,12 @@ async function loadState() {
   
   if (fs.existsSync(STATE_FILE)) {
     try {
-      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+      const fileState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+      // If MongoDB is connected but empty, initialize MongoDB with fileState
+      if (mongoose.connection.readyState === 1) {
+        await saveState(fileState);
+      }
+      return fileState;
     } catch (e) {
       console.warn("Local state file corrupted:", e.message);
     }
@@ -864,11 +876,133 @@ async function reEvaluateHoldings() {
     }
   }
 
-  state.holdings = remainingHoldings;
-  await saveState(state);
+// Deploy available cash into candidate setups immediately on current simulation date
+async function deployIdleCash(simDate) {
+  const state = await loadState();
+  const targetDate = simDate || state.lastSimulationDate;
+  const cachedData = await updateCache(targetDate);
+  
+  let availableSlots = state.config.maxPositions - state.holdings.length;
+  if (availableSlots <= 0 || state.cash < 1000) {
+    return state;
+  }
 
-  console.log(`[reEvaluate] Done. Closed ${closedTrades.length} position(s), ${remainingHoldings.length} still open.`);
-  return { state, closedTrades };
+  const candidates = [];
+  for (const stock of WATCHLIST) {
+    if (state.holdings.some(h => h.symbol === stock.symbol)) continue;
+    const stockHistory = cachedData[stock.symbol];
+    if (!stockHistory || stockHistory.length === 0) continue;
+    const dayIdx = stockHistory.findIndex(row => row.date === targetDate);
+    if (dayIdx === -1 || dayIdx < 50) continue;
+
+    const subHistory = stockHistory.slice(0, dayIdx + 1);
+    const closes = subHistory.map(row => row.close);
+    const highs = subHistory.map(row => row.high);
+    const lows = subHistory.map(row => row.low);
+    const currentClose = closes[closes.length - 1];
+
+    const sma20Array = calculateSMA(closes, 20);
+    const sma50Array = calculateSMA(closes, 50);
+    const rsiArray = calculateRSI(closes, 14);
+    const macdResult = calculateMACD(closes);
+
+    const sma20 = sma20Array[sma20Array.length - 1];
+    const sma50 = sma50Array[sma50Array.length - 1];
+    const rsiVal = rsiArray[rsiArray.length - 1];
+    const macdLine = macdResult.macdLine[macdResult.macdLine.length - 1];
+    const signalLine = macdResult.signalLine[macdResult.signalLine.length - 1];
+    const histogram = macdResult.histogram[macdResult.histogram.length - 1];
+    const breakout = checkBreakouts(closes, highs, lows, 10);
+
+    if (sma20 === null || sma50 === null || rsiVal === null) continue;
+
+    let buySignal = false;
+    let score = 0;
+    let reason = '';
+
+    if (currentClose > sma20 && sma20 > sma50 && rsiVal >= 52 && rsiVal <= 68 && breakout.isBullishBreakout) {
+      buySignal = true;
+      score = 90 + (rsiVal - 50);
+      reason = `Bullish 10-day price breakout on solid momentum (RSI = ${rsiVal.toFixed(1)}).`;
+    } else if (rsiVal < 38 && currentClose > lows[lows.length - 2] && currentClose >= sma50 * 0.98) {
+      buySignal = true;
+      score = 80 + (40 - rsiVal);
+      reason = `Oversold dip recovery (RSI = ${rsiVal.toFixed(1)}) near support.`;
+    } else if (macdLine > signalLine && macdResult.macdLine[macdResult.macdLine.length - 2] <= macdResult.signalLine[macdResult.signalLine.length - 2] && rsiVal > 48 && currentClose > sma20) {
+      buySignal = true;
+      score = 75;
+      reason = `MACD bullish crossover confirmed above the 20-day SMA.`;
+    }
+
+    if (buySignal) {
+      candidates.push({
+        symbol: stock.symbol,
+        name: stock.name,
+        sector: stock.sector,
+        price: currentClose,
+        score,
+        reason,
+        technicalStats: { rsi: rsiVal, sma20, sma50, macdHist: histogram || 0 }
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  let newBuysCount = 0;
+  for (const targetStock of candidates) {
+    availableSlots = state.config.maxPositions - state.holdings.length;
+    if (availableSlots <= 0 || state.cash < 1000) break;
+
+    const capitalAllocation = Math.min(state.cash, Math.max(state.cash / (availableSlots || 1), 3000));
+    const qty = Math.floor(capitalAllocation / targetStock.price);
+
+    if (qty > 0) {
+      const cost = qty * targetStock.price;
+      state.cash -= cost;
+      const targetPrice = targetStock.price * (1 + state.config.targetProfitPercent);
+      const stopLoss = targetStock.price * (1 - state.config.stopLossPercent);
+
+      const newHolding = {
+        symbol: targetStock.symbol,
+        name: targetStock.name,
+        sector: targetStock.sector,
+        quantity: qty,
+        buyPrice: targetStock.price,
+        currentPrice: targetStock.price,
+        buyDate: targetDate,
+        targetPrice,
+        stopLoss,
+        value: cost,
+        profit: 0.0,
+        profitPercent: 0.0,
+        buyReason: targetStock.reason,
+        technicalStats: targetStock.technicalStats
+      };
+
+      state.holdings.push(newHolding);
+      newBuysCount++;
+      console.log(`[deployIdleCash] BOUGHT ${qty} shares of ${targetStock.symbol} @ ₹${targetStock.price}. Target: ₹${targetPrice.toFixed(2)}, SL: ₹${stopLoss.toFixed(2)}`);
+    }
+  }
+
+  if (newBuysCount > 0) {
+    let holdingsValue = 0;
+    for (const h of state.holdings) {
+      holdingsValue += h.value;
+    }
+    const totalValue = state.cash + holdingsValue;
+    const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
+    if (lastVal) {
+      lastVal.cash = state.cash;
+      lastVal.holdingsValue = holdingsValue;
+      lastVal.totalValue = totalValue;
+      lastVal.profitPercent = ((totalValue - lastVal.totalDeposited) / lastVal.totalDeposited) * 100;
+    }
+    await saveState(state);
+  }
+
+  return state;
 }
 
 module.exports = {
@@ -878,5 +1012,6 @@ module.exports = {
   resetSimulation,
   runSimulation,
   reEvaluateHoldings,
+  deployIdleCash,
   getWatchlistQuotes
 };

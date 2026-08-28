@@ -8,16 +8,13 @@ const {
   resetSimulation, 
   runSimulation, 
   reEvaluateHoldings,
+  deployIdleCash,
   getWatchlistQuotes 
 } = require('./engine');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/quant_sentinal';
-
-mongoose.connect(MONGO_URI)
-  .then(() => console.log('MongoDB Connected successfully.'))
-  .catch(err => console.error('MongoDB Connection Error:', err));
 
 app.use(cors());
 app.use(express.json());
@@ -69,8 +66,9 @@ app.post('/api/trigger-run', async (req, res) => {
   try {
     const todayStr = getTodayUTCDateString();
     console.log(`Manual trigger run requested up to ${todayStr}...`);
-    const state = await runSimulation(todayStr);
-    res.json({ message: "Simulation catch-up completed.", state });
+    let state = await runSimulation(todayStr, true);
+    state = await deployIdleCash(todayStr);
+    res.json({ message: "Simulation catch-up and cash deployment completed.", state });
   } catch (error) {
     console.error("Error in manual run:", error);
     res.status(500).json({ error: "Failed to run simulation", details: error.message });
@@ -180,7 +178,11 @@ app.post('/api/deposit', async (req, res) => {
 
     await saveState(state);
     console.log(`Manual deposit of ₹${amount} completed. Cash: ₹${state.cash}`);
-    res.json({ message: "Deposit completed successfully.", state });
+
+    // Immediately deploy newly injected cash into candidates on current simulation date
+    const updatedState = await deployIdleCash(getTodayUTCDateString());
+
+    res.json({ message: "Deposit completed and cash deployed into active market setups.", state: updatedState });
   } catch (error) {
     console.error("Error making manual deposit:", error);
     res.status(500).json({ error: "Failed to process manual deposit" });
@@ -192,7 +194,8 @@ async function runAutomatedEngineCycle(forceRefresh = false) {
   try {
     const todayStr = getTodayUTCDateString();
     console.log(`[AUTOMATED SCHEDULER] Running engine cycle for date ${todayStr}...`);
-    const state = await runSimulation(todayStr, forceRefresh);
+    let state = await runSimulation(todayStr, forceRefresh);
+    state = await deployIdleCash(todayStr);
     console.log(`[AUTOMATED SCHEDULER] Cycle complete. Last simulation date: ${state.lastSimulationDate}`);
   } catch (error) {
     console.error("[AUTOMATED SCHEDULER] Error during engine cycle execution:", error.message);
@@ -223,16 +226,25 @@ function startTradingScheduler() {
   }, SCHEDULER_INTERVAL_MS);
 }
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`Quant Sentinal Trading Backend listening on port ${PORT}`);
-  // Initialize state on boot and start scheduler
+// Start Server Asynchronously ensuring MongoDB connects first
+async function startServer() {
   try {
-    loadState().then((state) => {
+    await mongoose.connect(MONGO_URI);
+    console.log('MongoDB Connected successfully.');
+  } catch (err) {
+    console.warn('MongoDB Connection Error (falling back to disk state.json):', err.message);
+  }
+
+  app.listen(PORT, async () => {
+    console.log(`Quant Sentinal Trading Backend listening on port ${PORT}`);
+    try {
+      const state = await loadState();
       console.log(`Database loaded. Simulation current date: ${state.lastSimulationDate}`);
       startTradingScheduler();
-    });
-  } catch (err) {
-    console.error("Failed to load initial state on boot:", err);
-  }
-});
+    } catch (err) {
+      console.error("Failed to load initial state on boot:", err);
+    }
+  });
+}
+
+startServer();
