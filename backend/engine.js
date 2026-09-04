@@ -155,8 +155,32 @@ async function saveState(state) {
 }
 
 // Reset state
-async function resetSimulation() {
-  const state = JSON.parse(JSON.stringify(INITIAL_STATE));
+async function resetSimulation(customStartDate) {
+  const startDate = customStartDate || '2026-08-08';
+  const state = {
+    ...JSON.parse(JSON.stringify(INITIAL_STATE)),
+    lastSimulationDate: startDate,
+    cash: 20000.0,
+    holdings: [],
+    history: [],
+    valuationHistory: [
+      {
+        date: startDate,
+        cash: 20000.0,
+        holdingsValue: 0.0,
+        totalValue: 20000.0,
+        profitPercent: 0.0,
+        totalDeposited: 20000.0
+      }
+    ],
+    logs: [
+      {
+        date: startDate,
+        sentiment: 'NEUTRAL',
+        text: `Quant Sentinal Trading System online. Initial capital of ₹20,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
+      }
+    ]
+  };
   await saveState(state);
   return state;
 }

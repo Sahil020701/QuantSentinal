@@ -78,9 +78,13 @@ app.post('/api/trigger-run', async (req, res) => {
 // POST Reset Simulation
 app.post('/api/reset', async (req, res) => {
   try {
-    console.log("Resetting simulation back to August 8, 2026...");
-    const state = await resetSimulation();
-    res.json({ message: "Simulation reset successful.", state });
+    const { startDate } = req.body || {};
+    const todayStr = getTodayUTCDateString();
+    const targetStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2026-08-08');
+    
+    console.log(`Resetting simulation baseline to ${targetStartDate}...`);
+    const state = await resetSimulation(targetStartDate);
+    res.json({ message: `Simulation reset successful with start date ${targetStartDate}.`, state });
   } catch (error) {
     console.error("Error resetting simulation:", error);
     res.status(500).json({ error: "Failed to reset simulation" });

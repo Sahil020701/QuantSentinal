@@ -92,16 +92,42 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     }
   };
 
-  const handleReset = async () => {
-    if (!window.confirm("Are you sure you want to reset the simulation? All trade history and logs will be wiped, returning account cash to initial ₹20,000 on August 8, 2026.")) return;
+  const handleResetToday = async () => {
+    if (!window.confirm("Are you sure you want to reset the simulation starting TODAY? All trade history and active positions will be cleared, and the account will start fresh today with initial ₹20,000 cash (as if created today).")) return;
     setResetting(true);
     setMessage('');
     try {
-      const res = await fetch(`${API_URL}/api/reset`, { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate: 'today' })
+      });
       if (!res.ok) throw new Error("Reset failed");
       const data = await res.json();
       onReset(data.state);
-      setMessage("✅ Simulation successfully reset to August 8, 2026.");
+      setMessage("✅ Simulation successfully reset with start date set to Today (Day 1 Clean Slate).");
+    } catch (err) {
+      console.error(err);
+      setMessage("❌ Error: Could not reset simulation.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const handleResetHistorical = async () => {
+    if (!window.confirm("Are you sure you want to reset the simulation to August 8, 2026? All trade history and logs will be wiped, returning account cash to initial ₹20,000 on August 8, 2026.")) return;
+    setResetting(true);
+    setMessage('');
+    try {
+      const res = await fetch(`${API_URL}/api/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate: '2026-08-08' })
+      });
+      if (!res.ok) throw new Error("Reset failed");
+      const data = await res.json();
+      onReset(data.state);
+      setMessage("✅ Simulation successfully reset to August 8, 2026 baseline.");
     } catch (err) {
       console.error(err);
       setMessage("❌ Error: Could not reset simulation.");
@@ -240,7 +266,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   onClick={handleTriggerRun} 
                   className="btn btn-primary" 
                   style={{ width: '100%' }}
-                  disabled={running}
+                  disabled={running || resetting}
                 >
                   ⚡ {running ? "Simulating Market Days..." : "Trigger Daily Update"}
                 </button>
@@ -248,16 +274,30 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   Force simulation engine to catch up and execute trades up to today's date using actual daily market bars.
                 </div>
 
+                <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.25rem 0 0.5rem 0' }} />
+
                 <button 
-                  onClick={handleReset} 
+                  onClick={handleResetToday} 
+                  className="btn btn-warning" 
+                  style={{ width: '100%', fontWeight: '600' }}
+                  disabled={resetting || running}
+                >
+                  🚀 {resetting ? "Resetting..." : "Reset Start Date to Today (Fresh Start)"}
+                </button>
+                <div className="config-desc" style={{ marginBottom: '0.5rem' }}>
+                  Sets account baseline to today as if created right now with initial ₹20,000 cash (no historical August backtest replay).
+                </div>
+
+                <button 
+                  onClick={handleResetHistorical} 
                   className="btn btn-danger" 
                   style={{ width: '100%' }}
-                  disabled={resetting}
+                  disabled={resetting || running}
                 >
-                  ⚠️ {resetting ? "Resetting Simulation..." : "Reset Simulation Database"}
+                  ⚠️ {resetting ? "Resetting..." : "Reset to August 8 Baseline (Backtest)"}
                 </button>
                 <div className="config-desc">
-                  Wipes history, closes active positions, and resets cash back to initial ₹20,000 starting on August 8, 2026.
+                  Wipes history and resets simulation to August 8, 2026 baseline for full retrospective backtesting.
                 </div>
               </div>
             </div>

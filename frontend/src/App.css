@@ -567,6 +567,17 @@
   border-color: var(--red);
 }
 
+.btn-warning {
+  background: rgba(202, 138, 4, 0.08);
+  color: var(--amber);
+  border: 1px solid rgba(202, 138, 4, 0.3);
+}
+
+.btn-warning:hover {
+  background: rgba(202, 138, 4, 0.16);
+  border-color: var(--amber);
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
