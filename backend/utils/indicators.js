@@ -154,16 +154,94 @@ function calculateMACD(prices, fastPeriod = 12, slowPeriod = 26, signalPeriod = 
 }
 
 /**
- * Check for breakouts over a given period
+ * Calculate Average True Range (ATR)
+ * @param {number[]} highs - High prices
+ * @param {number[]} lows - Low prices
+ * @param {number[]} closes - Close prices
+ * @param {number} period - ATR period (default: 14)
+ * @returns {(number|null)[]} Array of ATR values
+ */
+function calculateATR(highs, lows, closes, period = 14) {
+  if (!highs || highs.length === 0 || !lows || !closes) return [];
+  const len = highs.length;
+  const atrValues = Array(len).fill(null);
+  if (len <= period) return atrValues;
+
+  const trValues = [highs[0] - lows[0]];
+  for (let i = 1; i < len; i++) {
+    const hl = highs[i] - lows[i];
+    const hc = Math.abs(highs[i] - closes[i - 1]);
+    const lc = Math.abs(lows[i] - closes[i - 1]);
+    trValues.push(Math.max(hl, hc, lc));
+  }
+
+  // Initial ATR as simple mean of first 'period' TR values
+  let sum = 0;
+  for (let i = 0; i < period; i++) {
+    sum += trValues[i];
+  }
+  let currentAtr = sum / period;
+  atrValues[period - 1] = currentAtr;
+
+  // Wilder smoothing for subsequent bars
+  for (let i = period; i < len; i++) {
+    currentAtr = (currentAtr * (period - 1) + trValues[i]) / period;
+    atrValues[i] = currentAtr;
+  }
+
+  return atrValues;
+}
+
+/**
+ * Calculate Relative Volume (RVOL)
+ * Ratio of current bar volume to 20-bar average volume
+ * @param {number[]} volumes - Array of volume bars
+ * @param {number} period - Average volume lookback period (default: 20)
+ * @returns {(number|null)[]} Array of RVOL values
+ */
+function calculateRVOL(volumes, period = 20) {
+  if (!volumes || volumes.length === 0) return [];
+  const rvolValues = Array(volumes.length).fill(null);
+  if (volumes.length < period) return rvolValues;
+
+  const volSMA = calculateSMA(volumes, period);
+  for (let i = period - 1; i < volumes.length; i++) {
+    const avg = volSMA[i];
+    if (avg && avg > 0) {
+      rvolValues[i] = volumes[i] / avg;
+    } else {
+      rvolValues[i] = 1.0;
+    }
+  }
+
+  return rvolValues;
+}
+
+/**
+ * Calculate Trend Slope (% change over lookback)
+ * @param {(number|null)[]} series - Data series (e.g. SMA values)
+ * @param {number} lookback - Lookback bars (default: 5)
+ * @returns {number} Slope percentage or 0
+ */
+function calculateSlope(series, lookback = 5) {
+  if (!series || series.length <= lookback) return 0;
+  const current = series[series.length - 1];
+  const prev = series[series.length - 1 - lookback];
+  if (current === null || prev === null || prev === 0) return 0;
+  return ((current - prev) / prev) * 100;
+}
+
+/**
+ * Check for breakouts over a given period (default 20-day high/low)
  * @param {number[]} prices - Close prices
  * @param {number[]} highs - High prices
  * @param {number[]} lows - Low prices
- * @param {number} lookbackPeriod - Lookback period (default: 10)
- * @returns {{isBullishBreakout: boolean, isBearishBreakout: boolean}}
+ * @param {number} lookbackPeriod - Lookback period (default: 20)
+ * @returns {{isBullishBreakout: boolean, isBearishBreakout: boolean, resistance: number, support: number}}
  */
-function checkBreakouts(prices, highs, lows, lookbackPeriod = 10) {
+function checkBreakouts(prices, highs, lows, lookbackPeriod = 20) {
   if (!prices || prices.length <= lookbackPeriod) {
-    return { isBullishBreakout: false, isBearishBreakout: false };
+    return { isBullishBreakout: false, isBearishBreakout: false, resistance: 0, support: 0 };
   }
   
   const len = prices.length;
@@ -178,7 +256,9 @@ function checkBreakouts(prices, highs, lows, lookbackPeriod = 10) {
   
   return {
     isBullishBreakout: currentPrice > resistance,
-    isBearishBreakout: currentPrice < support
+    isBearishBreakout: currentPrice < support,
+    resistance,
+    support
   };
 }
 
@@ -187,5 +267,8 @@ module.exports = {
   calculateEMA,
   calculateRSI,
   calculateMACD,
+  calculateATR,
+  calculateRVOL,
+  calculateSlope,
   checkBreakouts
 };
