@@ -22,9 +22,10 @@ const DEFAULT_WATCHLIST = [
   { symbol: 'SBIN.NS', name: 'State Bank of India', sector: 'Banking & Financials' }
 ];
 
-const WATCHLIST = [];
+const FALLBACK_WATCHLIST_FILE = path.join(__dirname, 'data', 'watchlist_fallback.json');
 
 function loadWatchlist() {
+  // 1. Try loading from cache file
   if (fs.existsSync(CACHE_FILE)) {
     try {
       const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
@@ -35,9 +36,26 @@ function loadWatchlist() {
         return;
       }
     } catch (e) {
-      console.warn("Failed to load watchlist from cache, using default:", e.message);
+      console.warn("Failed to load watchlist from cache, checking fallback:", e.message);
     }
   }
+
+  // 2. Try loading from fallback watchlist file
+  if (fs.existsSync(FALLBACK_WATCHLIST_FILE)) {
+    try {
+      const list = JSON.parse(fs.readFileSync(FALLBACK_WATCHLIST_FILE, 'utf8'));
+      if (Array.isArray(list) && list.length > 0) {
+        WATCHLIST.length = 0;
+        WATCHLIST.push(...list);
+        console.log(`Loaded ${WATCHLIST.length} assets from fallback watchlist file.`);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to load fallback watchlist file:", e.message);
+    }
+  }
+
+  // 3. Fall back to minimal hardcoded default
   WATCHLIST.length = 0;
   WATCHLIST.push(...DEFAULT_WATCHLIST);
   console.log(`Using default boot watchlist with ${WATCHLIST.length} assets.`);
