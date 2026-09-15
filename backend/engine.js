@@ -14,6 +14,13 @@ const {
 } = require('./utils/indicators');
 const StateModel = require('./models/State');
 
+const STATE_FILE = process.env.NODE_ENV === 'test'
+  ? path.join(__dirname, 'state_test.json')
+  : path.join(__dirname, 'state.json');
+const CACHE_DIR = path.join(__dirname, 'data');
+const CACHE_FILE = path.join(__dirname, 'data', 'historical_cache.json');
+const FALLBACK_WATCHLIST_FILE = path.join(__dirname, 'data', 'watchlist_fallback.json');
+
 const DEFAULT_WATCHLIST = [
   { symbol: 'RELIANCE.NS', name: 'Reliance Industries', sector: 'Energy & Conglomerate' },
   { symbol: 'TCS.NS', name: 'Tata Consultancy Services', sector: 'IT Services' },
@@ -22,14 +29,14 @@ const DEFAULT_WATCHLIST = [
   { symbol: 'SBIN.NS', name: 'State Bank of India', sector: 'Banking & Financials' }
 ];
 
-const FALLBACK_WATCHLIST_FILE = path.join(__dirname, 'data', 'watchlist_fallback.json');
+const WATCHLIST = [];
 
 function loadWatchlist() {
   // 1. Try loading from cache file
   if (fs.existsSync(CACHE_FILE)) {
     try {
       const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-      if (cache.watchlist && cache.watchlist.length > 0) {
+      if (cache.watchlist && Array.isArray(cache.watchlist) && cache.watchlist.length > 0) {
         WATCHLIST.length = 0;
         WATCHLIST.push(...cache.watchlist);
         console.log(`Loaded ${WATCHLIST.length} assets from dynamic Nifty 200 watchlist cache.`);
@@ -61,13 +68,7 @@ function loadWatchlist() {
   console.log(`Using default boot watchlist with ${WATCHLIST.length} assets.`);
 }
 
-const STATE_FILE = process.env.NODE_ENV === 'test'
-  ? path.join(__dirname, 'state_test.json')
-  : path.join(__dirname, 'state.json');
-const CACHE_FILE = path.join(__dirname, 'data', 'historical_cache.json');
-const CACHE_DIR = path.join(__dirname, 'data');
-
-// Initialize watchlist on boot (runs after constants are defined)
+// Initialize watchlist on boot
 loadWatchlist();
 
 // Default initial state starting today: August 8, 2026
