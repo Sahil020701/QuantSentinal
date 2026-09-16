@@ -39,10 +39,10 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       if (!res.ok) throw new Error("Failed to save settings");
       const data = await res.json();
       onConfigUpdate(data.config);
-      setMessage("✅ Configuration saved successfully.");
+      setMessage("Configuration saved successfully.");
     } catch (err) {
       console.error(err);
-      setMessage("❌ Error: Could not save configuration.");
+      setMessage("Error: Could not save configuration.");
     } finally {
       setSaving(false);
     }
@@ -51,7 +51,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
   const handleDepositSubmit = async (e) => {
     e.preventDefault();
     if (!depositAmount || isNaN(depositAmount) || Number(depositAmount) <= 0) {
-      setMessage("❌ Error: Please enter a valid deposit amount.");
+      setMessage("Error: Please enter a valid deposit amount.");
       return;
     }
     setDepositing(true);
@@ -66,10 +66,10 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       const data = await res.json();
       onDeposit(data.state);
       setDepositAmount('');
-      setMessage(`✅ Successfully injected ₹${Number(depositAmount).toLocaleString('en-IN')} cash into account!`);
+      setMessage(`Successfully injected ₹${Number(depositAmount).toLocaleString('en-IN')} cash into account!`);
     } catch (err) {
       console.error(err);
-      setMessage("❌ Error: Capital injection failed.");
+      setMessage("Error: Capital injection failed.");
     } finally {
       setDepositing(false);
     }
@@ -83,10 +83,10 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       if (!res.ok) throw new Error("Trigger run failed");
       const data = await res.json();
       onTriggerRun(data.state);
-      setMessage("✅ Daily run catch-up completed.");
+      setMessage("Daily run catch-up completed.");
     } catch (err) {
       console.error(err);
-      setMessage("❌ Error: Daily simulation run failed.");
+      setMessage("Error: Daily simulation run failed.");
     } finally {
       setRunning(false);
     }
@@ -105,10 +105,10 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       if (!res.ok) throw new Error("Reset failed");
       const data = await res.json();
       onReset(data.state);
-      setMessage("✅ Simulation successfully reset with start date set to Today (Day 1 Clean Slate).");
+      setMessage("Simulation successfully reset with start date set to Today (Day 1 Clean Slate).");
     } catch (err) {
       console.error(err);
-      setMessage("❌ Error: Could not reset simulation.");
+      setMessage("Error: Could not reset simulation.");
     } finally {
       setResetting(false);
     }
@@ -127,14 +127,16 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       if (!res.ok) throw new Error("Reset failed");
       const data = await res.json();
       onReset(data.state);
-      setMessage("✅ Simulation successfully reset to August 8, 2026 baseline.");
+      setMessage("Simulation successfully reset to August 8, 2026 baseline.");
     } catch (err) {
       console.error(err);
-      setMessage("❌ Error: Could not reset simulation.");
+      setMessage("Error: Could not reset simulation.");
     } finally {
       setResetting(false);
     }
   };
+
+  const isErrorMessage = message.toLowerCase().includes('error');
 
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -144,9 +146,9 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
         <div style={{
           padding: '1rem',
           borderRadius: '10px',
-          background: message.startsWith('✅') ? 'var(--green-glow)' : 'var(--red-glow)',
-          border: `1px solid ${message.startsWith('✅') ? 'var(--green-border)' : 'var(--red-border)'}`,
-          color: message.startsWith('✅') ? 'var(--green)' : 'var(--red)',
+          background: isErrorMessage ? 'var(--red-glow)' : 'var(--green-glow)',
+          border: `1px solid ${isErrorMessage ? 'var(--red-border)' : 'var(--green-border)'}`,
+          color: isErrorMessage ? 'var(--red)' : 'var(--green)',
           fontSize: '0.9rem',
           fontWeight: '500'
         }}>
@@ -158,7 +160,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
         {/* Risk Management Settings */}
         <div className="glass-panel">
           <div className="panel-header">
-            <h2>⚙️ Trading Parameters</h2>
+            <h2>Trading Parameters</h2>
           </div>
           <form onSubmit={handleSaveConfig} className="config-group">
             <div className="config-item">
@@ -222,7 +224,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
             </div>
 
             <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }} disabled={saving}>
-              {saving ? "Saving Configurations..." : "💾 Save Strategy Settings"}
+              {saving ? "Saving Configurations..." : "Save Strategy Settings"}
             </button>
           </form>
         </div>
@@ -233,7 +235,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
           {/* Capital Injection */}
           <div className="glass-panel">
             <div className="panel-header">
-              <h2>💰 Capital Injection</h2>
+              <h2>Capital Injection</h2>
             </div>
             <form onSubmit={handleDepositSubmit} className="config-group">
               <div className="config-item">
@@ -258,7 +260,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
           {/* Simulation Commands */}
           <div className="glass-panel">
             <div className="panel-header">
-              <h2>🛠️ Simulation Commands</h2>
+              <h2>Simulation Commands</h2>
             </div>
             <div className="config-group">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -268,7 +270,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   style={{ width: '100%' }}
                   disabled={running || resetting}
                 >
-                  ⚡ {running ? "Simulating Market Days..." : "Trigger Daily Update"}
+                  {running ? "Simulating Market Days..." : "Trigger Daily Update"}
                 </button>
                 <div className="config-desc" style={{ marginBottom: '0.5rem' }}>
                   Force simulation engine to catch up and execute trades up to today's date using actual daily market bars.
@@ -282,7 +284,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   style={{ width: '100%', fontWeight: '600' }}
                   disabled={resetting || running}
                 >
-                  🚀 {resetting ? "Resetting..." : "Reset Start Date to Today (Fresh Start)"}
+                  {resetting ? "Resetting..." : "Reset Start Date to Today (Fresh Start)"}
                 </button>
                 <div className="config-desc" style={{ marginBottom: '0.5rem' }}>
                   Sets account baseline to today as if created right now with initial ₹20,000 cash (no historical August backtest replay).
@@ -294,7 +296,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   style={{ width: '100%' }}
                   disabled={resetting || running}
                 >
-                  ⚠️ {resetting ? "Resetting..." : "Reset to August 8 Baseline (Backtest)"}
+                  {resetting ? "Resetting..." : "Reset to August 8 Baseline (Backtest)"}
                 </button>
                 <div className="config-desc">
                   Wipes history and resets simulation to August 8, 2026 baseline for full retrospective backtesting.

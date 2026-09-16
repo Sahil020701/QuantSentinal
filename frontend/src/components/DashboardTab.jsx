@@ -63,7 +63,7 @@ export default function DashboardTab({ portfolio }) {
         {/* Growth Chart */}
         <div className="glass-panel">
           <div className="panel-header">
-            <h2>📈 Portfolio Net Worth</h2>
+            <h2>Portfolio Net Worth</h2>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
               Deposited Capital: ₹{totalDeposited.toLocaleString('en-IN')}
             </div>
@@ -81,7 +81,7 @@ export default function DashboardTab({ portfolio }) {
         {/* Short Summary / Trader Stats */}
         <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <div className="panel-header">
-            <h2>⚡ Quant Sentinal Trading Status</h2>
+            <h2>Quant Sentinal Trading Status</h2>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, justifyContent: 'center' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
@@ -113,7 +113,7 @@ export default function DashboardTab({ portfolio }) {
       {/* Holdings Section */}
       <div className="glass-panel">
         <div className="panel-header">
-          <h2>💼 Active Holdings</h2>
+          <h2>Active Holdings</h2>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
             Showing {holdings.length} open position{holdings.length === 1 ? '' : 's'}
           </span>

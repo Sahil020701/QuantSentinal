@@ -14,7 +14,7 @@ export default function LogTab({ logs = [] }) {
       <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="panel-header" style={{ flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <h2>📝 Quant Sentinal Trading Log</h2>
+            <h2>Quant Sentinal Trading Log</h2>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
               Daily commentary, quantitative scans, and trade decision narratives
             </p>
@@ -51,7 +51,7 @@ export default function LogTab({ logs = [] }) {
             {filteredLogs.map((log, idx) => (
               <div className="log-entry" key={idx}>
                 <div className="log-header">
-                  <span className="log-date">📅 {log.date}</span>
+                  <span className="log-date">{log.date}</span>
                   <span className={`sentiment-tag ${log.sentiment}`}>
                     {log.sentiment}
                   </span>

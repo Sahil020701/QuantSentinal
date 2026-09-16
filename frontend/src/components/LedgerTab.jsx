@@ -65,10 +65,10 @@ export default function LedgerTab({ history = [] }) {
       {/* Main Ledger Table */}
       <div className="glass-panel">
         <div className="panel-header">
-          <h2>📊 Closed Trades Ledger</h2>
+          <h2>Closed Trades Ledger</h2>
           {bestTrade && (
             <span style={{ fontSize: '0.8rem', color: 'var(--green)', background: 'var(--green-glow)', padding: '0.2rem 0.6rem', border: '1px solid var(--green-border)', borderRadius: '4px' }}>
-              ⭐ Best Trade: {bestTrade.symbol.replace('.NS', '')} (+₹{bestTrade.profit.toFixed(0)})
+              Best Trade: {bestTrade.symbol.replace('.NS', '')} (+₹{bestTrade.profit.toFixed(0)})
             </span>
           )}
         </div>

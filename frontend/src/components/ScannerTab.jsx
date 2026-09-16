@@ -55,7 +55,7 @@ export default function ScannerTab() {
   if (error) {
     return (
       <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem', color: 'var(--red)' }}>
-        <p style={{ fontWeight: '500' }}>⚠️ {error}</p>
+        <p style={{ fontWeight: '500' }}>{error}</p>
         <button onClick={fetchQuotes} className="btn btn-secondary" style={{ marginTop: '1rem' }}>
           Retry Scan
         </button>
@@ -73,13 +73,13 @@ export default function ScannerTab() {
       <div className="glass-panel">
         <div className="panel-header" style={{ borderBottom: 'none', paddingBottom: '0.5rem' }}>
           <div>
-            <h2>🔍 Market Watch & Scanner</h2>
+            <h2>Market Watch & Scanner</h2>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
               Real-time quotes, technical indicator analysis, and Quant Sentinal recommendation signals ({filteredQuotes.length} assets listed)
             </p>
           </div>
           <button onClick={fetchQuotes} className="btn btn-secondary" style={{ fontSize: '0.85rem' }}>
-            🔄 Refresh Market Data
+            Refresh Market Data
           </button>
         </div>
 
@@ -157,7 +157,7 @@ export default function ScannerTab() {
                 </div>
 
                 <div className={`scanner-rec ${recClass}`}>
-                  <span>⚙️</span> {stock.recommendation}
+                  {stock.recommendation}
                 </div>
               </div>
             );
@@ -223,7 +223,7 @@ export default function ScannerTab() {
 
             {/* Speclative Thesis */}
             <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent-border)', padding: '1rem', borderRadius: '10px' }}>
-              <h3 style={{ fontSize: '0.85rem', color: 'var(--accent)', fontWeight: '600', marginBottom: '0.35rem' }}>🧠 Quant Sentinal Speculative Thesis</h3>
+              <h3 style={{ fontSize: '0.85rem', color: 'var(--accent)', fontWeight: '600', marginBottom: '0.35rem' }}>Quant Sentinal Speculative Thesis</h3>
               <p style={{ fontSize: '0.82rem', lineHeight: '1.5', color: 'var(--text-primary)' }}>
                 {SECTOR_SPECULATIONS[selectedStock.sector] || "Scanning fundamental drivers and index liquidity pools for setups."}
               </p>

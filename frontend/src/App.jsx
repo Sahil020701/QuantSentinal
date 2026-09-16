@@ -73,13 +73,16 @@ export default function App() {
     return (
       <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
         <div className="glass-panel" style={{ maxWidth: '500px', textAlign: 'center', padding: '3rem 2rem' }}>
-          <span style={{ fontSize: '3rem' }}>⚠️</span>
-          <h2 style={{ margin: '1rem 0 0.5rem', color: 'var(--red)' }}>Server Connection Offline</h2>
+          <div className="status-badge closed" style={{ margin: '0 auto 1.5rem', width: 'fit-content' }}>
+            <div className="status-dot" />
+            <span>DISCONNECTED</span>
+          </div>
+          <h2 style={{ margin: '0 0 0.5rem', color: 'var(--red)' }}>Server Connection Offline</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.6' }}>
             {error}
           </p>
           <button onClick={fetchPortfolio} className="btn btn-primary">
-            🔄 Attempt Connection
+            Attempt Connection
           </button>
         </div>
       </div>
@@ -110,31 +113,31 @@ export default function App() {
           onClick={() => setActiveTab('dashboard')}
           className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
         >
-          💼 Portfolio Dashboard
+          Portfolio Dashboard
         </button>
         <button
           onClick={() => setActiveTab('scanner')}
           className={`tab-btn ${activeTab === 'scanner' ? 'active' : ''}`}
         >
-          🔍 Market Scanner
+          Market Scanner
         </button>
         <button
           onClick={() => setActiveTab('logs')}
           className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
         >
-          📝 Quant Sentinal Logs
+          Quant Sentinal Logs
         </button>
         <button
           onClick={() => setActiveTab('ledger')}
           className={`tab-btn ${activeTab === 'ledger' ? 'active' : ''}`}
         >
-          📊 Closed Trades ({portfolio.history.length})
+          Closed Trades ({portfolio.history.length})
         </button>
         <button
           onClick={() => setActiveTab('config')}
           className={`tab-btn ${activeTab === 'config' ? 'active' : ''}`}
         >
-          ⚙️ Strategy Config
+          Strategy Config
         </button>
       </nav>
 
