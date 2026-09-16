@@ -389,18 +389,18 @@ function evaluateMarketRegime(simDate, cachedData) {
 
   const subHistory = benchmarkData.slice(0, dayIdx + 1);
   const closes = subHistory.map(r => r.close);
-  const sma20Arr = calculateSMA(closes, 20);
-  const sma50Arr = calculateSMA(closes, 50);
+  const ema20Arr = calculateEMA(closes, 20);
+  const ema50Arr = calculateEMA(closes, 50);
   const rsiArr = calculateRSI(closes, 14);
 
   const currClose = closes[closes.length - 1];
-  const sma20 = sma20Arr[sma20Arr.length - 1];
-  const sma50 = sma50Arr[sma50Arr.length - 1];
+  const ema20 = ema20Arr[ema20Arr.length - 1];
+  const ema50 = ema50Arr[ema50Arr.length - 1];
   const rsi = rsiArr[rsiArr.length - 1] || 50;
 
-  if (sma20 && currClose > sma20 && rsi >= 48) {
+  if (ema20 && currClose > ema20 && (ema50 ? ema20 >= ema50 : true) && rsi >= 50) {
     return { regime: 'BULLISH', benchmarkRsi: rsi, trend: 'UP' };
-  } else if (sma20 && currClose < sma20 && rsi < 42) {
+  } else if (ema20 && (currClose < ema20 || rsi < 44)) {
     return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN' };
   }
   return { regime: 'NEUTRAL', benchmarkRsi: rsi, trend: 'CONSOLIDATING' };
@@ -447,18 +447,24 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     const len = closes.length;
     const currentClose = closes[len - 1];
     const currentOpen = opens[len - 1];
+    const currentHigh = highs[len - 1];
+    const currentLow = lows[len - 1];
     const prevClose = closes[len - 2];
 
-    // Compute technical indicators
+    // Compute technical indicators (EMA + SMA + RSI + MACD + ATR + RVOL)
+    const ema20Array = calculateEMA(closes, 20);
+    const ema50Array = calculateEMA(closes, 50);
     const sma20Array = calculateSMA(closes, 20);
     const sma50Array = calculateSMA(closes, 50);
     const rsiArray = calculateRSI(closes, 14);
     const macdResult = calculateMACD(closes);
     const atrArray = calculateATR(highs, lows, closes, 14);
     const rvolArray = calculateRVOL(volumes, 20);
-    const sma20Slope = calculateSlope(sma20Array, 5);
-    const sma50Slope = calculateSlope(sma50Array, 10);
+    const ema20Slope = calculateSlope(ema20Array, 5);
+    const ema50Slope = calculateSlope(ema50Array, 10);
 
+    const ema20 = ema20Array[len - 1];
+    const ema50 = ema50Array[len - 1];
     const sma20 = sma20Array[len - 1];
     const sma50 = sma50Array[len - 1];
     const rsiVal = rsiArray[len - 1];
@@ -472,130 +478,122 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     const currentAtr = atrArray[len - 1] || (currentClose * 0.02);
     const currentRvol = rvolArray[len - 1] || 1.0;
 
-    if (sma20 === null || sma50 === null || rsiVal === null) continue;
+    if (ema20 === null || ema50 === null || rsiVal === null) continue;
+
+    // Candlestick Buying Pressure: Close Location Value (CLV)
+    const candleRange = currentHigh - currentLow;
+    const clv = candleRange > 0 ? (currentClose - currentLow) / candleRange : 0.5;
 
     const breakout20 = checkBreakouts(closes, highs, lows, 20);
-    const breakout10 = checkBreakouts(closes, highs, lows, 10);
 
     let buySignal = false;
     let baseScore = 0;
     let reason = '';
     let strategyName = '';
 
-    // --- High-Probability Strategy 1: Volume-Confirmed Momentum Breakout (20-Day High) ---
-    // 20-day high breakout + price > 20 SMA > 50 SMA + upward slope + volume expansion + not overextended
+    // --- Institutional Strategy 1: Volume-Confirmed Controlled Breakout ---
+    // Strict uptrend (Price > 20 EMA > 50 EMA), not overextended (within 4.5% of 20 EMA), strong close & volume
     if (
       breakout20.isBullishBreakout &&
-      currentClose > sma20 &&
-      sma20 > sma50 &&
-      sma20Slope >= 0 &&
-      currentRvol >= 1.1 &&
-      rsiVal >= 52 &&
-      rsiVal <= 70 &&
+      currentClose > ema20 &&
+      ema20 > ema50 &&
+      ema20Slope > 0.2 &&
+      ema50Slope >= 0 &&
+      currentRvol >= 1.2 &&
+      rsiVal >= 53 &&
+      rsiVal <= 68 &&
       currentClose >= currentOpen &&
-      currentClose <= sma20 * 1.08 // Avoid chasing extended moves
+      clv >= 0.55 &&
+      currentClose <= ema20 * 1.045
     ) {
       buySignal = true;
       strategyName = 'MOMENTUM_BREAKOUT';
-      baseScore = 86;
-      reason = `20-day high breakout confirmed with volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}).`;
+      baseScore = 88;
+      reason = `Fresh 20-day breakout with volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`;
     }
 
-    // --- High-Probability Strategy 2: Value Pullback on Rising Support (Uptrend Dip Bounce) ---
-    // Primary trend is strictly UP (50 SMA slope >= 0 & price >= 50 SMA), bounced off 20/50 SMA support with a green reversal candle
+    // --- Institutional Strategy 2: High-Quality Uptrend Support Pullback Bounce ---
+    // Primary trend is strictly BULLISH (EMA20 > EMA50 and EMA50 sloping UP).
+    // Price bounced off 20 EMA support with a strong green reversal candle and momentum recovery.
     else if (
-      sma50Slope >= -0.1 &&
-      currentClose >= sma50 * 0.99 &&
-      (Math.abs(currentClose - sma20) / sma20 <= 0.025 || Math.abs(currentClose - sma50) / sma50 <= 0.03) &&
+      ema20 > ema50 &&
+      ema50Slope >= 0 &&
+      ema20Slope >= 0 &&
+      currentClose >= ema20 * 0.985 &&
+      currentClose <= ema20 * 1.03 &&
       currentClose > currentOpen &&
       currentClose > prevClose &&
-      rsiVal >= 36 &&
-      rsiVal <= 52 &&
+      clv >= 0.50 &&
+      rsiVal >= 43 &&
+      rsiVal <= 58 &&
       rsiVal > prevRsiVal &&
       (histogram === null || prevHistogram === null || histogram > prevHistogram)
     ) {
       buySignal = true;
       strategyName = 'SUPPORT_PULLBACK';
-      baseScore = 82;
-      const supLevel = Math.abs(currentClose - sma20) < Math.abs(currentClose - sma50) ? '20-day SMA' : '50-day SMA';
-      reason = `Bullish rebound off rising ${supLevel} support with positive momentum recovery (RSI: ${rsiVal.toFixed(1)}).`;
+      baseScore = 85;
+      reason = `Bullish support bounce off 20 EMA in strong primary uptrend (RSI: ${rsiVal.toFixed(1)}, Green Reversal).`;
     }
 
-    // --- High-Probability Strategy 3: High-Quality MACD Golden Cross with Trend Alignment ---
-    // Fresh MACD cross above 20 SMA and 50 SMA in a healthy momentum zone
+    // --- Institutional Strategy 3: MACD Momentum Expansion in Aligned Trend ---
+    // Bullish MACD crossover or expanding histogram above 20 & 50 EMA with constructive volume
     else if (
+      currentClose > ema20 &&
+      ema20 > ema50 &&
+      ema50Slope >= 0 &&
       macdLine !== null &&
       signalLine !== null &&
       macdLine > signalLine &&
-      prevMacdLine !== null &&
-      prevSignalLine !== null &&
-      prevMacdLine <= prevSignalLine &&
-      currentClose > sma20 &&
-      currentClose > sma50 &&
-      sma20 >= sma50 * 0.98 &&
-      rsiVal >= 48 &&
-      rsiVal <= 65 &&
-      currentRvol >= 0.85
-    ) {
-      buySignal = true;
-      strategyName = 'MACD_CROSSOVER';
-      baseScore = 78;
-      reason = `Bullish MACD crossover confirmed above 20 & 50-day moving averages (RSI: ${rsiVal.toFixed(1)}).`;
-    }
-
-    // --- High-Probability Strategy 4: Volatility Squeeze Expansion ---
-    // 10-day breakout with heavy institutional accumulation (RVOL >= 1.4)
-    else if (
-      breakout10.isBullishBreakout &&
-      currentClose > sma20 &&
-      sma20 > sma50 &&
-      currentRvol >= 1.4 &&
+      (prevMacdLine <= prevSignalLine || (histogram > 0 && prevHistogram !== null && histogram > prevHistogram)) &&
       rsiVal >= 50 &&
-      rsiVal <= 68 &&
-      currentClose > currentOpen
+      rsiVal <= 65 &&
+      currentRvol >= 1.05 &&
+      currentClose >= currentOpen &&
+      clv >= 0.50 &&
+      currentClose <= ema20 * 1.04
     ) {
       buySignal = true;
-      strategyName = 'VOLATILITY_EXPANSION';
-      baseScore = 80;
-      reason = `Consolidation breakout fueled by heavy institutional volume (${currentRvol.toFixed(1)}x RVOL).`;
+      strategyName = 'MACD_EXPANSION';
+      baseScore = 82;
+      reason = `MACD bullish momentum expansion aligned with 20 & 50 EMA trend (RSI: ${rsiVal.toFixed(1)}).`;
     }
 
     if (buySignal) {
       // --- Multi-Factor Confluence Scoring Adjustments (0-100 scale) ---
       let score = baseScore;
 
-      // 1. Volume Factor
-      if (currentRvol >= 2.0) score += 8;
-      else if (currentRvol >= 1.4) score += 5;
-      else if (currentRvol < 0.9) score -= 6;
+      // 1. Institutional Volume Confirmation
+      if (currentRvol >= 2.0) score += 6;
+      else if (currentRvol >= 1.4) score += 4;
+      else if (currentRvol < 1.0) score -= 5;
 
-      // 2. Trend & Moving Average Strength
-      if (currentClose > sma20 && sma20 > sma50 && sma20Slope > 0.8) score += 5;
-      if (sma50Slope > 0.5) score += 3;
+      // 2. Trend Stacking Strength
+      if (currentClose > ema20 && ema20 > ema50 && ema20Slope > 0.6) score += 4;
+      if (ema50Slope > 0.4) score += 3;
 
-      // 3. MACD Momentum
-      if (macdLine > 0 && histogram > 0) score += 4;
+      // 3. Candle Strength (Close location value)
+      if (clv >= 0.75) score += 4;
 
-      // 4. Proximity to Support (Tight Risk/Reward)
-      const distFromSma20 = (currentClose - sma20) / sma20;
-      if (distFromSma20 >= 0.005 && distFromSma20 <= 0.035) {
-        score += 4; // Perfect sweet spot near support
-      } else if (distFromSma20 > 0.06) {
-        score -= 5; // Penalty for being stretched
+      // 4. Proximity to 20 EMA Support (Reward-to-Risk Optimization)
+      const distFromEma20 = (currentClose - ema20) / ema20;
+      if (distFromEma20 >= 0.002 && distFromEma20 <= 0.025) {
+        score += 5; // Ideal low-risk sweet spot
+      } else if (distFromEma20 > 0.04) {
+        score -= 4; // Penalty for approaching overextended levels
       }
 
-      // 5. Market Regime Filter
+      // 5. Market Regime Confluence
       if (marketRegime.regime === 'BULLISH') {
-        score += 4;
+        score += 3;
       } else if (marketRegime.regime === 'RISK_OFF') {
-        score -= stock.sector === 'ETFs' ? 2 : 10;
+        score -= stock.sector === 'ETFs' ? 2 : 12; // Heavy penalty during market pullbacks
       }
 
       // Clamp score between 50 and 100
       score = Math.max(50, Math.min(100, Math.round(score)));
 
-      // Enforce Minimum Quality Bar
-      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 82 : 72;
+      // Quality Threshold: Filter out marginal setups
+      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 88 : 78;
       if (score >= minScoreThreshold) {
         candidates.push({
           symbol: stock.symbol,
@@ -607,8 +605,10 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
           strategy: strategyName,
           technicalStats: {
             rsi: rsiVal,
-            sma20,
-            sma50,
+            sma20: sma20 || ema20,
+            sma50: sma50 || ema50,
+            ema20,
+            ema50,
             rvol: currentRvol,
             atr: currentAtr,
             macdHist: histogram || 0
@@ -698,17 +698,55 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       let sellPrice = close;
       let sellReason = '';
 
-      // Check stop loss first (risk-averse prioritization)
+      // --- Trailing Stop-Loss Protection ---
+      // Lock in profits as trade moves in our favor to prevent winning swings from becoming losers
+      const maxProfitGainPercent = ((high - position.buyPrice) / position.buyPrice) * 100;
+      if (maxProfitGainPercent >= 4.0) {
+        const trailingLevel = position.buyPrice * 1.01; // Breakeven + 1%
+        if (trailingLevel > position.stopLoss) {
+          position.stopLoss = trailingLevel;
+        }
+      }
+      if (maxProfitGainPercent >= 7.5) {
+        const trailingLevel = position.buyPrice * 1.045; // Lock in +4.5%
+        if (trailingLevel > position.stopLoss) {
+          position.stopLoss = trailingLevel;
+        }
+      }
+      if (maxProfitGainPercent >= 12.0) {
+        const trailingLevel = position.buyPrice * 1.085; // Lock in +8.5%
+        if (trailingLevel > position.stopLoss) {
+          position.stopLoss = trailingLevel;
+        }
+      }
+
+      // 1. Check Stop-Loss / Trailing Stop Trigger (Risk-First)
       if (low <= position.stopLoss) {
         triggerSell = true;
         sellPrice = position.stopLoss; // Executed at stop loss
-        sellReason = 'Stop Loss Triggered';
+        sellReason = position.stopLoss > position.buyPrice ? 'Trailing Stop Profit Locked' : 'Stop Loss Triggered';
       } 
-      // Check target profit
+      // 2. Check Target Profit Hit
       else if (high >= position.targetPrice) {
         triggerSell = true;
         sellPrice = position.targetPrice; // Executed at target price
         sellReason = 'Target Profit Hit';
+      }
+      // 3. Technical Indicator Take-Profit (Overbought Exhaustion)
+      else {
+        const dayIdx = stockData.findIndex(row => row.date === simDate);
+        if (dayIdx >= 14) {
+          const closesSoFar = stockData.slice(0, dayIdx + 1).map(r => r.close);
+          const rsiArr = calculateRSI(closesSoFar, 14);
+          const stockRsi = rsiArr[rsiArr.length - 1] || 50;
+          const currentGainPct = ((close - position.buyPrice) / position.buyPrice) * 100;
+
+          if (currentGainPct >= 5.0 && stockRsi >= 76) {
+            triggerSell = true;
+            sellPrice = close;
+            sellReason = `RSI Overbought Exhaustion (${stockRsi.toFixed(1)}) Profit Taken`;
+          }
+        }
       }
 
       if (triggerSell) {
@@ -744,7 +782,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
           reason: sellReason
         });
         
-        console.log(`[${simDate}] SOLD ${position.symbol} @ ₹${sellPrice} (${sellReason}). P&L: ₹${profit.toFixed(2)}`);
+        console.log(`[${simDate}] SOLD ${position.symbol} @ ₹${sellPrice.toFixed(2)} (${sellReason}). P&L: ₹${profit.toFixed(2)} (${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}%)`);
       } else {
         // Position remains open, update its current price
         position.currentPrice = close;
@@ -969,12 +1007,16 @@ async function getWatchlistQuotes(endDateStr) {
       const volumes = history.map(r => r.volume || 0);
 
       const rsiArray = calculateRSI(closes, 14);
+      const ema20Array = calculateEMA(closes, 20);
+      const ema50Array = calculateEMA(closes, 50);
       const sma20Array = calculateSMA(closes, 20);
       const sma50Array = calculateSMA(closes, 50);
       const rvolArray = calculateRVOL(volumes, 20);
       const breakout20 = checkBreakouts(closes, highs, lows, 20);
 
       const rsi = rsiArray[rsiArray.length - 1];
+      const ema20 = ema20Array[ema20Array.length - 1];
+      const ema50 = ema50Array[ema50Array.length - 1];
       const sma20 = sma20Array[sma20Array.length - 1];
       const sma50 = sma50Array[sma50Array.length - 1];
       const rvol = rvolArray[rvolArray.length - 1] || 1.0;
@@ -983,18 +1025,18 @@ async function getWatchlistQuotes(endDateStr) {
       let recommendation = 'HOLD / WAIT';
       let recReason = 'Trend is consolidating, waiting for directional expansion.';
 
-      if (todayBar.close > sma20 && sma20 > sma50 && breakout20.isBullishBreakout && rvol >= 1.1 && rsi >= 52 && rsi <= 70) {
+      if (todayBar.close > ema20 && ema20 > ema50 && breakout20.isBullishBreakout && rvol >= 1.2 && rsi >= 53 && rsi <= 68 && todayBar.close <= ema20 * 1.045) {
         recommendation = 'STRONG BUY';
-        recReason = `Volume-backed 20-day high breakout (${rvol.toFixed(1)}x RVOL, RSI: ${rsi.toFixed(1)}).`;
-      } else if (todayBar.close >= sma50 * 0.99 && (Math.abs(todayBar.close - sma20) / sma20 <= 0.025 || Math.abs(todayBar.close - sma50) / sma50 <= 0.03) && todayBar.close > yesterdayBar.close && rsi >= 38 && rsi <= 54) {
+        recReason = `Volume-backed 20-day high breakout (${rvol.toFixed(1)}x RVOL, RSI: ${rsi.toFixed(1)}) in confirmed uptrend.`;
+      } else if (ema20 > ema50 && todayBar.close >= ema20 * 0.985 && todayBar.close <= ema20 * 1.03 && todayBar.close > yesterdayBar.close && rsi >= 43 && rsi <= 58) {
         recommendation = 'ACCUMULATE';
-        recReason = `Bouncing off key moving average support with momentum recovery (RSI: ${rsi.toFixed(1)}).`;
-      } else if (rsi > 72 || (sma20 && todayBar.close > sma20 * 1.08)) {
+        recReason = `Bouncing off 20 EMA support in primary uptrend (RSI: ${rsi.toFixed(1)}).`;
+      } else if (rsi > 72 || (ema20 && todayBar.close > ema20 * 1.08)) {
         recommendation = 'HOLD / REDUCE';
         recReason = 'Short-term overbought/extended, watch for trailing stop-loss trigger.';
-      } else if (sma20 && sma50 && todayBar.close < sma20 && sma20 < sma50) {
+      } else if (ema20 && ema50 && todayBar.close < ema20 && ema20 < ema50) {
         recommendation = 'AVOID';
-        recReason = 'Asset in confirmed downtrend below 20 and 50-day moving averages.';
+        recReason = 'Asset in confirmed downtrend below 20 and 50 EMAs.';
       }
 
       result.push({
@@ -1005,8 +1047,8 @@ async function getWatchlistQuotes(endDateStr) {
         change,
         changePercent,
         rsi: rsi || 50,
-        sma20: sma20 || todayBar.close,
-        sma50: sma50 || todayBar.close,
+        sma20: sma20 || ema20 || todayBar.close,
+        sma50: sma50 || ema50 || todayBar.close,
         rvol: rvol,
         recommendation,
         recReason,
@@ -1068,11 +1110,32 @@ async function reEvaluateHoldings() {
     let sellPrice = close;
     let sellReason = '';
 
-    // Re-check using the baked-in targetPrice (which was already updated retroactively when config changed)
+    // --- Trailing Stop-Loss Protection ---
+    const maxProfitGainPercent = ((high - position.buyPrice) / position.buyPrice) * 100;
+    if (maxProfitGainPercent >= 4.0) {
+      const trailingLevel = position.buyPrice * 1.01;
+      if (trailingLevel > position.stopLoss) {
+        position.stopLoss = trailingLevel;
+      }
+    }
+    if (maxProfitGainPercent >= 7.5) {
+      const trailingLevel = position.buyPrice * 1.045;
+      if (trailingLevel > position.stopLoss) {
+        position.stopLoss = trailingLevel;
+      }
+    }
+    if (maxProfitGainPercent >= 12.0) {
+      const trailingLevel = position.buyPrice * 1.085;
+      if (trailingLevel > position.stopLoss) {
+        position.stopLoss = trailingLevel;
+      }
+    }
+
+    // Re-check using the stopLoss and targetPrice
     if (low <= position.stopLoss) {
       triggerSell = true;
       sellPrice = position.stopLoss;
-      sellReason = 'Stop Loss Triggered';
+      sellReason = position.stopLoss > position.buyPrice ? 'Trailing Stop Profit Locked' : 'Stop Loss Triggered';
     } else if (high >= position.targetPrice) {
       triggerSell = true;
       sellPrice = position.targetPrice;
@@ -1103,7 +1166,7 @@ async function reEvaluateHoldings() {
 
       state.history.push(completedTrade);
       closedTrades.push(completedTrade);
-      console.log(`[reEvaluate] SOLD ${position.symbol} @ ₹${sellPrice.toFixed(2)} — ${sellReason}. P&L: ₹${profit.toFixed(2)} (${profitPercent.toFixed(2)}%)`);
+      console.log(`[reEvaluate] SOLD ${position.symbol} @ ₹${sellPrice.toFixed(2)} — ${sellReason}. P&L: ₹${profit.toFixed(2)} (${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}%)`);
     } else {
       // Update current price but keep position
       position.currentPrice = close;
