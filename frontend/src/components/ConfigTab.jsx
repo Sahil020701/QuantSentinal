@@ -115,19 +115,19 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
   };
 
   const handleResetHistorical = async () => {
-    if (!window.confirm("Are you sure you want to reset the simulation to August 8, 2026? All trade history and logs will be wiped, returning account cash to initial ₹50,000 on August 8, 2026.")) return;
+    if (!window.confirm("Are you sure you want to reset the simulation to July 1, 2026? All trade history and logs will be wiped, returning account cash to initial ₹50,000 on July 1, 2026.")) return;
     setResetting(true);
     setMessage('');
     try {
       const res = await fetch(`${API_URL}/api/reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startDate: '2026-08-08' })
+        body: JSON.stringify({ startDate: '2026-07-01' })
       });
       if (!res.ok) throw new Error("Reset failed");
       const data = await res.json();
       onReset(data.state);
-      setMessage("Simulation successfully reset to August 8, 2026 baseline.");
+      setMessage("Simulation successfully reset to July 1, 2026 baseline.");
     } catch (err) {
       console.error(err);
       setMessage("Error: Could not reset simulation.");
@@ -296,10 +296,10 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   style={{ width: '100%' }}
                   disabled={resetting || running}
                 >
-                  {resetting ? "Resetting..." : "Reset to August 8 Baseline (Backtest)"}
+                  {resetting ? "Resetting..." : "Reset to July 1 Baseline (Backtest)"}
                 </button>
                 <div className="config-desc">
-                  Wipes history and resets simulation to August 8, 2026 baseline for full retrospective backtesting.
+                  Wipes history and resets simulation to July 1, 2026 baseline for full retrospective backtesting.
                 </div>
               </div>
             </div>

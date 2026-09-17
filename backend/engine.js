@@ -71,15 +71,15 @@ function loadWatchlist() {
 // Initialize watchlist on boot
 loadWatchlist();
 
-// Default initial state starting today: August 8, 2026
+// Default initial state starting July 1, 2026
 const INITIAL_STATE = {
-  lastSimulationDate: '2026-08-08',
+  lastSimulationDate: '2026-07-01',
   cash: 50000.0,
   holdings: [],
   history: [],
   valuationHistory: [
     {
-      date: '2026-08-08',
+      date: '2026-07-01',
       cash: 50000.0,
       holdingsValue: 0.0,
       totalValue: 50000.0,
@@ -89,9 +89,9 @@ const INITIAL_STATE = {
   ],
   logs: [
     {
-      date: '2026-08-08',
+      date: '2026-07-01',
       sentiment: 'NEUTRAL',
-      text: "Quant Sentinal Aggressive Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and oversold rebounds. Current state is cash-only; waiting for market open on Monday to execute technical scanners."
+      text: "Quant Sentinal Aggressive Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and oversold rebounds. Current simulation baseline set to 2026-07-01. Ready for market scanning and execution."
     }
   ],
   config: {
@@ -175,7 +175,7 @@ async function saveState(state) {
 
 // Reset state
 async function resetSimulation(customStartDate) {
-  const startDate = customStartDate || '2026-08-08';
+  const startDate = customStartDate || '2026-07-01';
   const state = {
     ...JSON.parse(JSON.stringify(INITIAL_STATE)),
     lastSimulationDate: startDate,
@@ -653,29 +653,33 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
   console.log(`Simulating ${tradingDates.length} trading days: from ${tradingDates[0]} to ${tradingDates[tradingDates.length - 1]}`);
 
+  // Track total deposited capital and monthly injection transitions
+  let currentTotalDeposited = (state.valuationHistory && state.valuationHistory.length > 0)
+    ? (state.valuationHistory[state.valuationHistory.length - 1].totalDeposited || 50000.0)
+    : 50000.0;
+
+  // Track month key (YYYY-MM) of last deposit to prevent duplicate deposits in the same month
+  let lastDepositMonthKey = state.lastSimulationDate ? state.lastSimulationDate.slice(0, 7) : '2026-07';
+
   // We loop day-by-day through the new trading dates
   for (const simDate of tradingDates) {
     const todayTransactions = [];
 
-    // --- 1. Monthly Deposit Check (Deposit automatically on the 1st of each month) ---
-    const simDay = new Date(simDate);
-    const lastRunDay = new Date(state.lastSimulationDate);
+    // --- 1. Monthly Deposit Check (Deposit automatically on 1st trading day of each new month) ---
+    const currentMonthKey = simDate.slice(0, 7); // e.g. '2026-09'
     
-    // Deposit ₹50k automatically when a new month arrives (on or after the 1st trading day of the new month)
-    const isNewMonth = simDay.getMonth() !== lastRunDay.getMonth() || simDay.getFullYear() !== lastRunDay.getFullYear();
-    
-    if (isNewMonth) {
-      state.cash += 50000.0;
-      // Record deposit in valuation totals
-      const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
-      const newTotalDeposited = (lastVal ? lastVal.totalDeposited : 0) + 50000.0;
+    if (currentMonthKey !== lastDepositMonthKey) {
+      const depositAmount = 50000.0;
+      state.cash += depositAmount;
+      currentTotalDeposited += depositAmount;
+      lastDepositMonthKey = currentMonthKey;
       
       todayTransactions.push({
         type: 'DEPOSIT',
-        amount: 50000.0,
+        amount: depositAmount,
         reason: 'Monthly Contribution (1st of Month)'
       });
-      console.log(`[${simDate}] Deposited monthly ₹50,000. Cash: ₹${state.cash}`);
+      console.log(`[${simDate}] Deposited monthly ₹${depositAmount.toLocaleString('en-IN')}. Cash: ₹${state.cash.toFixed(2)}, Total Deposited: ₹${currentTotalDeposited.toFixed(2)}`);
     }
 
     // --- 2. Portfolio Sell Checks (Evaluate active holdings) ---
@@ -947,9 +951,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     }
 
     const totalValue = state.cash + holdingsValue;
-    const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
-    const totalDeposited = lastVal ? lastVal.totalDeposited : 50000.0;
-    const profitPercent = ((totalValue - totalDeposited) / totalDeposited) * 100;
+    const profitPercent = currentTotalDeposited > 0 ? ((totalValue - currentTotalDeposited) / currentTotalDeposited) * 100 : 0.0;
 
     // Append to valuation history
     state.valuationHistory.push({
@@ -958,7 +960,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       holdingsValue: holdingsValue,
       totalValue: totalValue,
       profitPercent: profitPercent,
-      totalDeposited: totalDeposited
+      totalDeposited: currentTotalDeposited
     });
 
     // Determine Day Sentiment based on transactions or random fluctuation

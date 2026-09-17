@@ -80,7 +80,7 @@ app.post('/api/reset', async (req, res) => {
   try {
     const { startDate } = req.body || {};
     const todayStr = getTodayUTCDateString();
-    const targetStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2026-08-08');
+    const targetStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2026-07-01');
     
     console.log(`Resetting simulation baseline to ${targetStartDate}...`);
     const state = await resetSimulation(targetStartDate);
