@@ -891,8 +891,19 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
 
       if (canBuy && state.cash >= 1000) {
-        const activeSlots = state.config.maxPositions - state.holdings.length;
-        const capitalAllocation = Math.min(state.cash, Math.max(state.cash / (activeSlots || 1), 3000));
+        // Calculate total portfolio value (cash + holdings) for position sizing
+        let currentHoldingsValue = 0;
+        for (const h of state.holdings) currentHoldingsValue += h.value;
+        const totalPortfolioValue = state.cash + currentHoldingsValue;
+
+        // Keep a 5% cash reserve — only deploy if we have more than that sitting idle
+        const minCashReserve = totalPortfolioValue * 0.05;
+        if (state.cash <= minCashReserve) continue;
+
+        // Each position targets 5% of total portfolio (20 slots × 5% = 100% invested).
+        // Floor: ₹5,000 | Ceiling: 40% of current cash so multiple positions fill fast.
+        const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.05);
+        const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.40, state.cash - minCashReserve);
         const qty = Math.floor(capitalAllocation / targetStock.price);
 
         if (qty > 0) {
@@ -930,7 +941,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
             reason: targetStock.reason
           });
           
-          console.log(`[${simDate}] BOUGHT ${qty} shares of ${targetStock.symbol} @ ₹${targetStock.price}. Target: ₹${targetPrice.toFixed(2)}, SL: ₹${stopLoss.toFixed(2)}`);
+          console.log(`[${simDate}] BOUGHT ${qty} shares of ${targetStock.symbol} @ ₹${targetStock.price} (Allocated: ₹${cost.toFixed(0)} / Portfolio: ₹${totalPortfolioValue.toFixed(0)}). Target: ₹${targetPrice.toFixed(2)}, SL: ₹${stopLoss.toFixed(2)}`);
         }
       }
     }
@@ -1229,8 +1240,16 @@ async function deployIdleCash(simDate) {
     availableSlots = state.config.maxPositions - state.holdings.length;
     if (availableSlots <= 0 || state.cash < 1000) break;
 
-    const capitalAllocation = Math.min(state.cash, Math.max(state.cash / (availableSlots || 1), 3000));
+    // Target 5% of total portfolio per position (matches main simulation loop)
+    let currentHoldingsValue = 0;
+    for (const h of state.holdings) currentHoldingsValue += h.value;
+    const totalPortfolioValue = state.cash + currentHoldingsValue;
+    const minCashReserve = totalPortfolioValue * 0.05;
+    if (state.cash <= minCashReserve) break;
+    const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.05);
+    const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.40, state.cash - minCashReserve);
     const qty = Math.floor(capitalAllocation / targetStock.price);
+
 
     if (qty > 0) {
       const cost = qty * targetStock.price;
