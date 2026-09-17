@@ -435,7 +435,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
 
     // Get index for current simulation date
     const dayIdx = stockHistory.findIndex(row => row.date === simDate);
-    if (dayIdx === -1 || dayIdx < 50) continue; // Need at least 50 bars of history
+    if (dayIdx === -1 || dayIdx < 30) continue; // Need at least 30 bars of history
 
     const subHistory = stockHistory.slice(0, dayIdx + 1);
     const closes = subHistory.map(row => row.close);
@@ -558,6 +558,27 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       reason = `MACD bullish momentum expansion aligned with 20 & 50 EMA trend (RSI: ${rsiVal.toFixed(1)}).`;
     }
 
+    // --- Strategy 4: EMA Trend Continuation (Steady Uptrend Rider) ---
+    // Stock is in a confirmed uptrend (EMA20 > EMA50), holding above EMA20, RSI rising and healthy.
+    // Less strict than strategies 1-3 — catches steady trending stocks between breakouts/pullbacks.
+    else if (
+      ema20 > ema50 &&
+      ema20Slope > 0.1 &&
+      ema50Slope >= 0 &&
+      currentClose > ema20 &&
+      currentClose <= ema20 * 1.06 &&
+      rsiVal >= 48 &&
+      rsiVal <= 70 &&
+      rsiVal > prevRsiVal &&
+      currentClose >= currentOpen &&
+      currentRvol >= 0.9
+    ) {
+      buySignal = true;
+      strategyName = 'TREND_CONTINUATION';
+      baseScore = 80;
+      reason = `Steady uptrend continuation above 20 EMA (RSI: ${rsiVal.toFixed(1)}, RVOL: ${currentRvol.toFixed(1)}x).`;
+    }
+
     if (buySignal) {
       // --- Multi-Factor Confluence Scoring Adjustments (0-100 scale) ---
       let score = baseScore;
@@ -586,14 +607,14 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       if (marketRegime.regime === 'BULLISH') {
         score += 3;
       } else if (marketRegime.regime === 'RISK_OFF') {
-        score -= stock.sector === 'ETFs' ? 2 : 12; // Heavy penalty during market pullbacks
+        score -= stock.sector === 'ETFs' ? 2 : 6; // Moderate penalty — don't completely block non-ETFs
       }
 
       // Clamp score between 50 and 100
       score = Math.max(50, Math.min(100, Math.round(score)));
 
-      // Quality Threshold: Filter out marginal setups
-      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 88 : 78;
+      // Quality Threshold: RISK_OFF raises bar slightly, but not to the point of blocking all trades
+      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 82 : 76;
       if (score >= minScoreThreshold) {
         candidates.push({
           symbol: stock.symbol,
