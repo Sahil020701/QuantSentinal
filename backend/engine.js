@@ -425,8 +425,8 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     // Avoid buying what we already hold
     if (currentHoldings.some(h => h.symbol === stock.symbol)) continue;
 
-    // Sector limit: max 2 positions per sector (except ETFs) to prevent concentration risk
-    if (stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= 2) {
+    // Sector limit: max 3 positions per sector (except ETFs) to prevent concentration risk
+    if (stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= 3) {
       continue;
     }
 
@@ -832,9 +832,9 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
     // Deploy cash to top candidates
     for (const targetStock of candidates) {
-      // Sector diversification: prevent more than 2 open positions in same sector (except ETFs)
+      // Sector diversification: prevent more than 3 open positions in same sector (except ETFs)
       const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 2) {
+      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 3) {
         continue;
       }
 
@@ -917,14 +917,15 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         for (const h of state.holdings) currentHoldingsValue += h.value;
         const totalPortfolioValue = state.cash + currentHoldingsValue;
 
-        // Keep a 5% cash reserve — only deploy if we have more than that sitting idle
+        // Keep a 5% cash reserve — stop deploying once we hit the floor
         const minCashReserve = totalPortfolioValue * 0.05;
-        if (state.cash <= minCashReserve) continue;
+        if (state.cash <= minCashReserve) break;
 
-        // Each position targets 5% of total portfolio (20 slots × 5% = 100% invested).
-        // Floor: ₹5,000 | Ceiling: 40% of current cash so multiple positions fill fast.
-        const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.05);
-        const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.40, state.cash - minCashReserve);
+        // Each position targets 8% of total portfolio.
+        // Fewer slots needed to hit 90%+ deployed (12 × 8% = 96%).
+        // Floor: ₹5,000 | Ceiling: 60% of available cash — deploys idle cash fast.
+        const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.08);
+        const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
         const qty = Math.floor(capitalAllocation / targetStock.price);
 
         if (qty > 0) {
@@ -1252,23 +1253,23 @@ async function deployIdleCash(simDate) {
 
   let newBuysCount = 0;
   for (const targetStock of candidates) {
-    // Sector diversification check: maximum 2 positions per sector (except ETFs)
+    // Sector diversification check: maximum 3 positions per sector (except ETFs)
     const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-    if (targetStock.sector !== 'ETFs' && currentSectorCount >= 2) {
+    if (targetStock.sector !== 'ETFs' && currentSectorCount >= 3) {
       continue;
     }
 
     availableSlots = state.config.maxPositions - state.holdings.length;
     if (availableSlots <= 0 || state.cash < 1000) break;
 
-    // Target 5% of total portfolio per position (matches main simulation loop)
+    // Target 8% of total portfolio per position — 12 positions × 8% = 96% deployed.
     let currentHoldingsValue = 0;
     for (const h of state.holdings) currentHoldingsValue += h.value;
     const totalPortfolioValue = state.cash + currentHoldingsValue;
     const minCashReserve = totalPortfolioValue * 0.05;
     if (state.cash <= minCashReserve) break;
-    const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.05);
-    const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.40, state.cash - minCashReserve);
+    const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.08);
+    const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
     const qty = Math.floor(capitalAllocation / targetStock.price);
 
 
