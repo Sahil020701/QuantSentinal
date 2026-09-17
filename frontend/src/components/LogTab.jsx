@@ -43,9 +43,9 @@ function DetailDrawer({ details, date }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
           {[
-            { label: 'Total Value', val: `\u20b9${fmt(details.totalValue)}` },
-            { label: 'Cash',        val: `\u20b9${fmt(details.cash)}`,          sub: details.totalValue > 0 ? `${((details.cash / details.totalValue) * 100).toFixed(0)}% liquid` : '' },
-            { label: 'Invested',    val: `\u20b9${fmt(details.holdingsValue)}`, sub: `${details.activePositions || 0} positions` },
+            { label: 'Total Value', val: `₹${fmt(details.totalValue)}` },
+            { label: 'Cash',        val: `₹${fmt(details.cash)}`,          sub: details.totalValue > 0 ? `${((details.cash / details.totalValue) * 100).toFixed(0)}% liquid` : '' },
+            { label: 'Invested',    val: `₹${fmt(details.holdingsValue)}`, sub: `${details.activePositions || 0} positions` },
           ].map(({ label, val, sub }) => (
             <div key={label} style={{ background: 'var(--bg-main)', borderRadius: '8px', padding: '0.55rem 0.7rem', border: '1px solid var(--border-color)' }}>
               <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.15rem' }}>{label}</div>
@@ -73,14 +73,14 @@ function DetailDrawer({ details, date }) {
                 <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{t.symbol || '—'}</span>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.73rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {t.type === 'DEPOSIT'
-                    ? `Monthly contribution \u20b9${fmt(t.amount)}`
+                    ? `Monthly contribution ₹${fmt(t.amount)}`
                     : t.type === 'BUY'
-                    ? `${t.quantity} sh @ \u20b9${t.price?.toFixed(2)} | Target \u20b9${t.targetPrice?.toFixed(2)} | SL \u20b9${t.stopLoss?.toFixed(2)}`
-                    : `${t.quantity} sh @ \u20b9${t.price?.toFixed(2)} — ${t.reason}`}
+                    ? `${t.quantity} sh @ ₹${t.price?.toFixed(2)} | Target ₹${t.targetPrice?.toFixed(2)} | SL ₹${t.stopLoss?.toFixed(2)}`
+                    : `${t.quantity} sh @ ₹${t.price?.toFixed(2)} — ${t.reason}`}
                 </span>
                 {t.type === 'SELL' && (
                   <span style={{ fontWeight: 700, fontSize: '0.75rem', whiteSpace: 'nowrap', color: (t.profit ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                    {(t.profit ?? 0) >= 0 ? '+' : ''}\u20b9{Math.abs(t.profit ?? 0).toFixed(0)} ({fmtPct(t.profitPercent)})
+                    {(t.profit ?? 0) >= 0 ? '+' : ''}₹{Math.abs(t.profit ?? 0).toFixed(0)} ({fmtPct(t.profitPercent)})
                   </span>
                 )}
               </div>
@@ -108,7 +108,7 @@ function DetailDrawer({ details, date }) {
                   </span>
                 </div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
-                  {h.quantity} sh \u00b7 \u20b9{h.currentPrice?.toFixed(1)} \u00b7 \u20b9{fmt(h.value)}
+                  {h.quantity} sh \u00b7 ₹{h.currentPrice?.toFixed(1)} \u00b7 ₹{fmt(h.value)}
                 </div>
               </div>
             ))}
@@ -163,7 +163,7 @@ function LogEntry({ log }) {
         {/* EOD value */}
         {details?.totalValue != null && (
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary)' }}>\u20b9{fmt(details.totalValue)}</div>
+            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary)' }}>₹{fmt(details.totalValue)}</div>
             <div style={{ fontSize: '0.61rem', color: 'var(--text-muted)' }}>{details.activePositions ?? 0} pos</div>
           </div>
         )}
