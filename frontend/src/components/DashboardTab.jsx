@@ -6,16 +6,16 @@ export default function DashboardTab({ portfolio }) {
 
   // Latest valuation details
   const latestValuation = valuationHistory[valuationHistory.length - 1] || {
-    totalValue: 20000.0,
+    totalValue: 50000.0,
     profitPercent: 0.0,
-    totalDeposited: 20000.0,
+    totalDeposited: 50000.0,
     holdingsValue: 0.0
   };
 
   const totalValue = latestValuation.totalValue;
   const holdingsValue = latestValuation.holdingsValue || 0;
   const profitPercent = latestValuation.profitPercent || 0;
-  const totalDeposited = latestValuation.totalDeposited || 20000.0;
+  const totalDeposited = latestValuation.totalDeposited || 50000.0;
   const netProfit = totalValue - totalDeposited;
 
   // Active positions statistics

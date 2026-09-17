@@ -74,24 +74,24 @@ loadWatchlist();
 // Default initial state starting today: August 8, 2026
 const INITIAL_STATE = {
   lastSimulationDate: '2026-08-08',
-  cash: 20000.0,
+  cash: 50000.0,
   holdings: [],
   history: [],
   valuationHistory: [
     {
       date: '2026-08-08',
-      cash: 20000.0,
+      cash: 50000.0,
       holdingsValue: 0.0,
-      totalValue: 20000.0,
+      totalValue: 50000.0,
       profitPercent: 0.0,
-      totalDeposited: 20000.0
+      totalDeposited: 50000.0
     }
   ],
   logs: [
     {
       date: '2026-08-08',
       sentiment: 'NEUTRAL',
-      text: "Quant Sentinal Aggressive Trading System online. Initial capital of ₹20,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and oversold rebounds. Current state is cash-only; waiting for market open on Monday to execute technical scanners."
+      text: "Quant Sentinal Aggressive Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and oversold rebounds. Current state is cash-only; waiting for market open on Monday to execute technical scanners."
     }
   ],
   config: {
@@ -179,24 +179,24 @@ async function resetSimulation(customStartDate) {
   const state = {
     ...JSON.parse(JSON.stringify(INITIAL_STATE)),
     lastSimulationDate: startDate,
-    cash: 20000.0,
+    cash: 50000.0,
     holdings: [],
     history: [],
     valuationHistory: [
       {
         date: startDate,
-        cash: 20000.0,
+        cash: 50000.0,
         holdingsValue: 0.0,
-        totalValue: 20000.0,
+        totalValue: 50000.0,
         profitPercent: 0.0,
-        totalDeposited: 20000.0
+        totalDeposited: 50000.0
       }
     ],
     logs: [
       {
         date: startDate,
         sentiment: 'NEUTRAL',
-        text: `Quant Sentinal Trading System online. Initial capital of ₹20,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
+        text: `Quant Sentinal Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
       }
     ]
   };
@@ -351,7 +351,7 @@ function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, trans
         const profitLossText = t.profit >= 0 ? `PROFIT of +₹${t.profit.toFixed(2)} (+${t.profitPercent.toFixed(1)}%)` : `LOSS of -₹${Math.abs(t.profit).toFixed(2)} (${t.profitPercent.toFixed(1)}%)`;
         logsText += `- **SOLD** ${t.quantity} shares of ${t.symbol.replace('.NS', '')} at ₹${t.price.toFixed(2)}: Triggered ${t.reason}. Realized ${profitLossText}.\n`;
       } else if (t.type === 'DEPOSIT') {
-        logsText += `- **MONTHLY DEPOSIT**: Added ₹20,000.00 cash to the portfolio. Total cash available: ₹${cash.toFixed(2)}.\n`;
+        logsText += `- **MONTHLY DEPOSIT**: Added ₹50,000.00 cash to the portfolio. Total cash available: ₹${cash.toFixed(2)}.\n`;
       }
     });
     logsText += `\n`;
@@ -657,27 +657,25 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
   for (const simDate of tradingDates) {
     const todayTransactions = [];
 
-    // --- 1. Monthly Deposit Check (Deposit on the 8th of each month) ---
+    // --- 1. Monthly Deposit Check (Deposit automatically on the 1st of each month) ---
     const simDay = new Date(simDate);
     const lastRunDay = new Date(state.lastSimulationDate);
     
-    // Deposit ₹20k if a new month has arrived on the 8th day (or if we skipped past the 8th of a new month)
+    // Deposit ₹50k automatically when a new month arrives (on or after the 1st trading day of the new month)
     const isNewMonth = simDay.getMonth() !== lastRunDay.getMonth() || simDay.getFullYear() !== lastRunDay.getFullYear();
-    const isPastDepositDay = simDay.getDate() >= 8;
-    const lastRunBeforeDepositDay = lastRunDay.getDate() < 8;
     
-    if ((isNewMonth && isPastDepositDay) || (isNewMonth && lastRunBeforeDepositDay)) {
-      state.cash += 20000.0;
+    if (isNewMonth) {
+      state.cash += 50000.0;
       // Record deposit in valuation totals
       const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
-      const newTotalDeposited = (lastVal ? lastVal.totalDeposited : 0) + 20000.0;
+      const newTotalDeposited = (lastVal ? lastVal.totalDeposited : 0) + 50000.0;
       
       todayTransactions.push({
         type: 'DEPOSIT',
-        amount: 20000.0,
-        reason: 'Monthly Contribution'
+        amount: 50000.0,
+        reason: 'Monthly Contribution (1st of Month)'
       });
-      console.log(`[${simDate}] Deposited monthly ₹20,000. Cash: ₹${state.cash}`);
+      console.log(`[${simDate}] Deposited monthly ₹50,000. Cash: ₹${state.cash}`);
     }
 
     // --- 2. Portfolio Sell Checks (Evaluate active holdings) ---
@@ -735,17 +733,27 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       // 3. Technical Indicator Take-Profit (Overbought Exhaustion)
       else {
         const dayIdx = stockData.findIndex(row => row.date === simDate);
+        const buyIdx = stockData.findIndex(row => row.date === position.buyDate);
+        const tradingDaysHeld = (buyIdx !== -1 && dayIdx !== -1) ? (dayIdx - buyIdx) : Math.round((new Date(simDate) - new Date(position.buyDate)) / (1000 * 60 * 60 * 24));
+        const currentGainPct = ((close - position.buyPrice) / position.buyPrice) * 100;
+
         if (dayIdx >= 14) {
           const closesSoFar = stockData.slice(0, dayIdx + 1).map(r => r.close);
           const rsiArr = calculateRSI(closesSoFar, 14);
           const stockRsi = rsiArr[rsiArr.length - 1] || 50;
-          const currentGainPct = ((close - position.buyPrice) / position.buyPrice) * 100;
 
           if (currentGainPct >= 6.0 && stockRsi >= 78) {
             triggerSell = true;
             sellPrice = close;
             sellReason = `RSI Overbought Exhaustion (${stockRsi.toFixed(1)}) Profit Taken`;
           }
+        }
+
+        // 4. Stale Trade Exit (Time Stop): Release stagnant capital after 15+ trading days if underperforming
+        if (!triggerSell && tradingDaysHeld >= 15 && currentGainPct < 3.0) {
+          triggerSell = true;
+          sellPrice = close;
+          sellReason = `Stale Trade Time Exit (${tradingDaysHeld} Days Flat)`;
         }
       }
 
@@ -940,7 +948,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
     const totalValue = state.cash + holdingsValue;
     const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
-    const totalDeposited = lastVal ? lastVal.totalDeposited : 20000.0;
+    const totalDeposited = lastVal ? lastVal.totalDeposited : 50000.0;
     const profitPercent = ((totalValue - totalDeposited) / totalDeposited) * 100;
 
     // Append to valuation history
@@ -1140,6 +1148,17 @@ async function reEvaluateHoldings() {
       triggerSell = true;
       sellPrice = position.targetPrice;
       sellReason = 'Target Profit Hit';
+    } else {
+      const buyIdx = stockData.findIndex(row => row.date === position.buyDate);
+      const currIdx = stockData.findIndex(row => row.date === simDate);
+      const tradingDaysHeld = (buyIdx !== -1 && currIdx !== -1) ? (currIdx - buyIdx) : Math.round((new Date(simDate) - new Date(position.buyDate)) / (1000 * 60 * 60 * 24));
+      const currentGainPct = ((close - position.buyPrice) / position.buyPrice) * 100;
+
+      if (tradingDaysHeld >= 15 && currentGainPct < 3.0) {
+        triggerSell = true;
+        sellPrice = close;
+        sellReason = `Stale Trade Time Exit (${tradingDaysHeld} Days Flat)`;
+      }
     }
 
     if (triggerSell) {

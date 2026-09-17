@@ -164,7 +164,7 @@ app.post('/api/deposit', async (req, res) => {
     
     // Update the last history element to adjust totalDeposited
     const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
-    const currentDeposits = lastVal ? lastVal.totalDeposited : 20000.0;
+    const currentDeposits = lastVal ? lastVal.totalDeposited : 50000.0;
     const newDeposits = currentDeposits + Number(amount);
 
     if (lastVal) {
