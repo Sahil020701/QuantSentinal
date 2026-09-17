@@ -190,17 +190,55 @@ function LogEntry({ log }) {
   );
 }
 
+const PAGE_SIZE = 25;
+
 export default function LogTab({ logs = [] }) {
   const [selectedSentiment, setSelectedSentiment] = useState('ALL');
   const [searchDate, setSearchDate] = useState('');
+  const [page, setPage] = useState(1);
   const sentiments = ['ALL', 'BULLISH', 'BEARISH', 'VOLATILE', 'NEUTRAL'];
 
   const filteredLogs = logs
     .filter(log => selectedSentiment === 'ALL' || log.sentiment === selectedSentiment)
     .filter(log => !searchDate.trim() || log.date.includes(searchDate.trim()));
 
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+  // Clamp page if filters narrowed results
+  const safePage = Math.min(page, totalPages);
+  const pageLogs = filteredLogs.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  const handleSentiment = (sent) => { setSelectedSentiment(sent); setPage(1); };
+  const handleSearch    = (val)  => { setSearchDate(val);          setPage(1); };
+
   const totalBuys  = logs.reduce((s, l) => s + (l.details?.transactions?.filter(t => t.type === 'BUY').length  ?? 0), 0);
   const totalSells = logs.reduce((s, l) => s + (l.details?.transactions?.filter(t => t.type === 'SELL').length ?? 0), 0);
+
+  // Page button style helper
+  const pgBtn = (active, disabled) => ({
+    padding: '0.28rem 0.6rem', fontSize: '0.72rem', fontWeight: 600, borderRadius: '6px',
+    cursor: disabled ? 'not-allowed' : 'pointer', border: '1px solid var(--border-color)',
+    background: active ? 'var(--accent)' : 'transparent',
+    color: active ? '#fff' : disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+    opacity: disabled ? 0.45 : 1,
+    transition: 'all 0.15s ease',
+  });
+
+  // Build visible page numbers (window of 5 around current)
+  const pageNums = [];
+  const WINDOW = 2;
+  for (let p = 1; p <= totalPages; p++) {
+    if (p === 1 || p === totalPages || Math.abs(p - safePage) <= WINDOW) {
+      pageNums.push(p);
+    }
+  }
+  // Insert ellipsis markers
+  const pageItems = [];
+  let prev = null;
+  for (const p of pageNums) {
+    if (prev !== null && p - prev > 1) pageItems.push('…');
+    pageItems.push(p);
+    prev = p;
+  }
 
   return (
     <div className="tab-content">
@@ -217,7 +255,7 @@ export default function LogTab({ logs = [] }) {
             {sentiments.map(sent => (
               <button
                 key={sent}
-                onClick={() => setSelectedSentiment(sent)}
+                onClick={() => handleSentiment(sent)}
                 style={{
                   padding: '0.3rem 0.65rem', fontSize: '0.7rem', fontWeight: 600, borderRadius: '6px', cursor: 'pointer',
                   background: selectedSentiment === sent ? (SENTIMENT_META[sent]?.bg || 'var(--accent-glow)') : 'transparent',
@@ -233,22 +271,57 @@ export default function LogTab({ logs = [] }) {
               type="text"
               placeholder="Filter date… e.g. 2026-08"
               value={searchDate}
-              onChange={e => setSearchDate(e.target.value)}
+              onChange={e => handleSearch(e.target.value)}
               style={{ padding: '0.3rem 0.65rem', fontSize: '0.73rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none', width: '175px' }}
             />
           </div>
         </div>
+
         {/* Entries */}
         {filteredLogs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
             No entries match the selected filter.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '72vh', overflowY: 'auto', paddingRight: '0.2rem' }}>
-            {filteredLogs.map((log, idx) => (
-              <LogEntry key={`${log.date}-${idx}`} log={log} />
-            ))}
-          </div>
+          <>
+            {/* Count + pagination top */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredLogs.length)} of {filteredLogs.length} entries
+              </span>
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button style={pgBtn(false, safePage === 1)} disabled={safePage === 1} onClick={() => setPage(p => p - 1)}>‹ Prev</button>
+                  {pageItems.map((item, i) =>
+                    item === '…'
+                      ? <span key={`ellipsis-${i}`} style={{ fontSize: '0.72rem', color: 'var(--text-muted)', padding: '0 0.15rem' }}>…</span>
+                      : <button key={item} style={pgBtn(item === safePage, false)} onClick={() => setPage(item)}>{item}</button>
+                  )}
+                  <button style={pgBtn(false, safePage === totalPages)} disabled={safePage === totalPages} onClick={() => setPage(p => p + 1)}>Next ›</button>
+                </div>
+              )}
+            </div>
+
+            {/* Log list — no scroll wrapper; full height per page */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {pageLogs.map((log, idx) => (
+                <LogEntry key={`${log.date}-${idx}`} log={log} />
+              ))}
+            </div>
+
+            {/* Pagination bottom (only when more than 1 page) */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingTop: '0.25rem', gap: '0.25rem', flexWrap: 'wrap' }}>
+                <button style={pgBtn(false, safePage === 1)} disabled={safePage === 1} onClick={() => setPage(p => p - 1)}>‹ Prev</button>
+                {pageItems.map((item, i) =>
+                  item === '…'
+                    ? <span key={`ellipsis-b-${i}`} style={{ fontSize: '0.72rem', color: 'var(--text-muted)', padding: '0 0.15rem' }}>…</span>
+                    : <button key={item} style={pgBtn(item === safePage, false)} onClick={() => setPage(item)}>{item}</button>
+                )}
+                <button style={pgBtn(false, safePage === totalPages)} disabled={safePage === totalPages} onClick={() => setPage(p => p + 1)}>Next ›</button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
