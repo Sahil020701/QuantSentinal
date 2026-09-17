@@ -579,7 +579,25 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       reason = `Steady uptrend continuation above 20 EMA (RSI: ${rsiVal.toFixed(1)}, RVOL: ${currentRvol.toFixed(1)}x).`;
     }
 
+    // --- Strategy 5: Short-Term Momentum (Recovery / Neutral Market) ---
+    // Does NOT require ema20 > ema50. Fires when price is above a rising EMA20 with healthy RSI.
+    // This is the "fill slots" strategy — ensures candidates exist even in sideways/recovering markets.
+    else if (
+      ema20Slope > 0.05 &&                        // EMA20 must be rising (even slightly)
+      currentClose > ema20 &&                     // Price above short-term average
+      currentClose <= ema20 * 1.07 &&             // Not extended beyond 7% above EMA20
+      rsiVal >= 45 && rsiVal <= 68 &&             // RSI in healthy non-overbought zone
+      currentClose >= currentOpen &&              // Green candle
+      currentRvol >= 0.75                         // Not abnormally thin volume
+    ) {
+      buySignal = true;
+      strategyName = 'SHORT_TERM_MOMENTUM';
+      baseScore = 76;
+      reason = `Short-term momentum: price above rising EMA20 (RSI: ${rsiVal.toFixed(1)}, RVOL: ${currentRvol.toFixed(1)}x).`;
+    }
+
     if (buySignal) {
+
       // --- Multi-Factor Confluence Scoring Adjustments (0-100 scale) ---
       let score = baseScore;
 
@@ -613,8 +631,9 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       // Clamp score between 50 and 100
       score = Math.max(50, Math.min(100, Math.round(score)));
 
-      // Quality Threshold: RISK_OFF raises bar slightly, but not to the point of blocking all trades
-      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 82 : 76;
+      // Quality Threshold: 72 in normal markets (S5 base=76, needs only minor volume dip to still pass),
+      // 78 in RISK_OFF (still allows quality S1-S4 trades, blocks only marginal S5 ones).
+      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 78 : 72;
       if (score >= minScoreThreshold) {
         candidates.push({
           symbol: stock.symbol,
@@ -830,15 +849,53 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     // --- 3. Technical Scanner & Buys ---
     const { candidates, marketRegime } = scanMarketCandidates(simDate, cachedData, state.holdings, state.config);
 
-    // Deploy cash to top candidates
+    // Helper: execute a buy and record transaction
+    const executeBuy = (targetStock) => {
+      let currentHoldingsValue = 0;
+      for (const h of state.holdings) currentHoldingsValue += h.value;
+      const totalPortfolioValue = state.cash + currentHoldingsValue;
+      const minCashReserve = totalPortfolioValue * 0.05;
+      if (state.cash <= minCashReserve) return false;
+
+      const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.08);
+      const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
+      const qty = Math.floor(capitalAllocation / targetStock.price);
+      if (qty <= 0) return false;
+
+      const cost = qty * targetStock.price;
+      state.cash -= cost;
+      const targetPrice = targetStock.price * (1 + state.config.targetProfitPercent);
+      const stopLoss = targetStock.price * (1 - state.config.stopLossPercent);
+
+      state.holdings.push({
+        symbol: targetStock.symbol,
+        name: targetStock.name,
+        sector: targetStock.sector,
+        quantity: qty,
+        buyPrice: targetStock.price,
+        currentPrice: targetStock.price,
+        buyDate: simDate,
+        targetPrice,
+        stopLoss,
+        value: cost,
+        profit: 0.0,
+        profitPercent: 0.0,
+        buyReason: targetStock.reason,
+        technicalStats: targetStock.technicalStats
+      });
+
+      todayTransactions.push({ type: 'BUY', symbol: targetStock.symbol, quantity: qty, price: targetStock.price, targetPrice, stopLoss, reason: targetStock.reason });
+      console.log(`[${simDate}] BOUGHT ${qty}x ${targetStock.symbol} @ ₹${targetStock.price.toFixed(2)} (₹${cost.toFixed(0)} / Portfolio ₹${totalPortfolioValue.toFixed(0)}). SL: ₹${stopLoss.toFixed(2)}`);
+      return true;
+    };
+
+    // --- Pass 1: Deploy cash to qualified scanner candidates ---
     for (const targetStock of candidates) {
       // Sector diversification: prevent more than 3 open positions in same sector (except ETFs)
       const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 3) {
-        continue;
-      }
+      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 3) continue;
 
-      let availableSlots = state.config.maxPositions - state.holdings.length;
+      const availableSlots = state.config.maxPositions - state.holdings.length;
       let canBuy = (availableSlots > 0 && state.cash >= 1000);
 
       const rotationEnabled = state.config.rotationEnabled !== false;
@@ -852,7 +909,6 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
         for (let j = 0; j < state.holdings.length; j++) {
           const h = state.holdings[j];
-          // Prevent same-day rotation churn
           if (h.buyDate !== simDate && h.profitPercent < worstHoldingProfit) {
             worstHoldingProfit = h.profitPercent;
             worstHoldingIndex = j;
@@ -866,105 +922,88 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
           const sellPrice = dayBar ? dayBar.close : position.currentPrice;
           const revenue = position.quantity * sellPrice;
 
-          // Only proceed if the swap generates enough cash to actually buy at least 1 share of the candidate
           if (state.cash + revenue >= targetStock.price) {
             const cost = position.quantity * position.buyPrice;
             const profit = revenue - cost;
             const profitPercent = (profit / cost) * 100;
-
             state.cash += revenue;
 
-            const completedTrade = {
-              symbol: position.symbol,
-              name: position.name,
-              sector: position.sector,
-              quantity: position.quantity,
-              buyPrice: position.buyPrice,
-              sellPrice: sellPrice,
-              buyDate: position.buyDate,
-              sellDate: simDate,
-              profit: profit,
-              profitPercent: profitPercent,
-              reason: `Replaced by ${targetStock.symbol} (Score: ${targetStock.score.toFixed(1)})`
-            };
-
-            state.history.push(completedTrade);
-            todayTransactions.push({
-              type: 'SELL',
-              symbol: position.symbol,
-              quantity: position.quantity,
-              price: sellPrice,
-              profit: profit,
-              profitPercent: profitPercent,
-              reason: `Replaced by ${targetStock.symbol} (Score: ${targetStock.score.toFixed(1)})`
-            });
-
-            console.log(`[${simDate}] ROTATION SELL: Replaced underperformer ${position.symbol} @ ₹${sellPrice} (P&L: ${profitPercent.toFixed(2)}%) with ${targetStock.symbol}`);
-            
-            // Remove from holdings
+            state.history.push({ symbol: position.symbol, name: position.name, sector: position.sector, quantity: position.quantity, buyPrice: position.buyPrice, sellPrice, buyDate: position.buyDate, sellDate: simDate, profit, profitPercent, reason: `Replaced by ${targetStock.symbol} (Score: ${targetStock.score.toFixed(1)})` });
+            todayTransactions.push({ type: 'SELL', symbol: position.symbol, quantity: position.quantity, price: sellPrice, profit, profitPercent, reason: `Replaced by ${targetStock.symbol}` });
+            console.log(`[${simDate}] ROTATION SELL: ${position.symbol} @ ₹${sellPrice} → ${targetStock.symbol}`);
             state.holdings.splice(worstHoldingIndex, 1);
-            
-            // Recalculate indicators for the buying logic
-            availableSlots = state.config.maxPositions - state.holdings.length;
             canBuy = true;
           }
         }
       }
 
       if (canBuy && state.cash >= 1000) {
-        // Calculate total portfolio value (cash + holdings) for position sizing
-        let currentHoldingsValue = 0;
-        for (const h of state.holdings) currentHoldingsValue += h.value;
-        const totalPortfolioValue = state.cash + currentHoldingsValue;
+        executeBuy(targetStock);
+        if (state.holdings.length >= state.config.maxPositions) break;
+      }
+    }
 
-        // Keep a 5% cash reserve — stop deploying once we hit the floor
-        const minCashReserve = totalPortfolioValue * 0.05;
-        if (state.cash <= minCashReserve) break;
+    // --- Pass 2: Urgent Cash Deployment — if cash > 20%, force-fill empty slots ---
+    // This enforces the 90-95% invested mandate. Scans ALL stocks (not just top candidates)
+    // for any showing basic positive short-term momentum, and buys the best available.
+    {
+      let hv2 = 0; for (const h of state.holdings) hv2 += h.value;
+      const portfolioVal2 = state.cash + hv2;
+      const cashRatio = portfolioVal2 > 0 ? state.cash / portfolioVal2 : 0;
 
-        // Each position targets 8% of total portfolio.
-        // Fewer slots needed to hit 90%+ deployed (12 × 8% = 96%).
-        // Floor: ₹5,000 | Ceiling: 60% of available cash — deploys idle cash fast.
-        const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.08);
-        const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
-        const qty = Math.floor(capitalAllocation / targetStock.price);
+      if (cashRatio > 0.20 && state.holdings.length < state.config.maxPositions) {
+        // Build a force-deploy candidate list from ALL watchlist stocks not already held
+        const heldSymbols = new Set(state.holdings.map(h => h.symbol));
+        const forceCandidates = [];
 
-        if (qty > 0) {
-          const cost = qty * targetStock.price;
-          state.cash -= cost;
+        for (const stock of WATCHLIST) {
+          if (heldSymbols.has(stock.symbol)) continue;
+          // Sector cap still enforced at 3
+          const secCount = state.holdings.filter(h => h.sector === stock.sector).length;
+          if (stock.sector !== 'ETFs' && secCount >= 3) continue;
 
-          const targetPrice = targetStock.price * (1 + state.config.targetProfitPercent);
-          const stopLoss = targetStock.price * (1 - state.config.stopLossPercent);
+          const stockHistory = cachedData[stock.symbol];
+          if (!stockHistory || stockHistory.length === 0) continue;
+          const dayIdx = stockHistory.findIndex(row => row.date === simDate);
+          if (dayIdx === -1 || dayIdx < 20) continue;
 
-          const newHolding = {
-            symbol: targetStock.symbol,
-            name: targetStock.name,
-            sector: targetStock.sector,
-            quantity: qty,
-            buyPrice: targetStock.price,
-            currentPrice: targetStock.price,
-            buyDate: simDate,
-            targetPrice: targetPrice,
-            stopLoss: stopLoss,
-            value: cost,
-            profit: 0.0,
-            profitPercent: 0.0,
-            buyReason: targetStock.reason,
-            technicalStats: targetStock.technicalStats
-          };
+          const sub = stockHistory.slice(0, dayIdx + 1);
+          const cls = sub.map(r => r.close);
+          const hhs = sub.map(r => r.high);
+          const lls = sub.map(r => r.low);
+          const ops = sub.map(r => r.open !== undefined ? r.open : r.close);
+          const vls = sub.map(r => r.volume || 0);
 
-          state.holdings.push(newHolding);
-          todayTransactions.push({
-            type: 'BUY',
-            symbol: targetStock.symbol,
-            quantity: qty,
-            price: targetStock.price,
-            targetPrice,
-            stopLoss,
-            reason: targetStock.reason
-          });
-          
-          console.log(`[${simDate}] BOUGHT ${qty} shares of ${targetStock.symbol} @ ₹${targetStock.price} (Allocated: ₹${cost.toFixed(0)} / Portfolio: ₹${totalPortfolioValue.toFixed(0)}). Target: ₹${targetPrice.toFixed(2)}, SL: ₹${stopLoss.toFixed(2)}`);
+          const len2 = cls.length;
+          const ema20Arr2 = calculateEMA(cls, 20);
+          const rsiArr2 = calculateRSI(cls, 14);
+          const ema20_2 = ema20Arr2[len2 - 1];
+          const rsi2 = rsiArr2[len2 - 1];
+          const close2 = cls[len2 - 1];
+          const open2 = ops[len2 - 1];
+          const rvols2 = calculateRVOL(vls, 20);
+          const rvol2 = rvols2[len2 - 1] || 1.0;
+
+          if (!ema20_2 || !rsi2) continue;
+          // Minimal criteria: price above EMA20, RSI not overbought, green candle, not extreme volume
+          if (close2 > ema20_2 && rsi2 >= 40 && rsi2 <= 72 && close2 >= open2 && rvol2 >= 0.6) {
+            const distScore = Math.max(0, 10 - ((close2 - ema20_2) / ema20_2) * 100); // closer to EMA20 = better
+            forceCandidates.push({ ...stock, price: close2, score: 65 + distScore, reason: `Force-deploy: above EMA20 (RSI ${rsi2.toFixed(1)})`, technicalStats: { rsi: rsi2, ema20: ema20_2, ema50: ema20_2, rvol: rvol2, atr: 0, macdHist: 0 } });
+          }
         }
+
+        // Sort by score (proximity to EMA20 preferred) and deploy
+        forceCandidates.sort((a, b) => b.score - a.score);
+        for (const fc of forceCandidates) {
+          if (state.holdings.length >= state.config.maxPositions) break;
+          let hv3 = 0; for (const h of state.holdings) hv3 += h.value;
+          if (state.cash / (state.cash + hv3) <= 0.08) break; // stop at 8% cash remaining
+          if (!state.holdings.some(h => h.symbol === fc.symbol)) {
+            executeBuy(fc);
+          }
+        }
+        const hv4 = state.holdings.reduce((s, h) => s + h.value, 0);
+        console.log(`[${simDate}] FORCE-DEPLOY: Cash ratio was ${(cashRatio * 100).toFixed(0)}% → now ${(state.cash / (state.cash + hv4) * 100).toFixed(0)}% (${state.holdings.length} positions)`);
       }
     }
 
@@ -1019,7 +1058,33 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     state.logs.unshift({
       date: simDate,
       sentiment: sentiment,
-      text: logText
+      text: logText,
+      details: {
+        cash: state.cash,
+        holdingsValue: holdingsValue,
+        totalValue: totalValue,
+        activePositions: state.holdings.length,
+        transactions: todayTransactions.map(t => ({
+          type: t.type,
+          symbol: t.symbol ? t.symbol.replace('.NS', '') : null,
+          quantity: t.quantity,
+          price: t.price,
+          targetPrice: t.targetPrice,
+          stopLoss: t.stopLoss,
+          profit: t.profit,
+          profitPercent: t.profitPercent,
+          reason: t.reason,
+          amount: t.amount
+        })),
+        holdings: state.holdings.map(h => ({
+          symbol: h.symbol.replace('.NS', ''),
+          quantity: h.quantity,
+          buyPrice: h.buyPrice,
+          currentPrice: h.currentPrice,
+          profitPercent: h.profitPercent,
+          value: h.value
+        }))
+      }
     });
 
     state.lastSimulationDate = simDate;
