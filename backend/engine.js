@@ -95,13 +95,13 @@ const INITIAL_STATE = {
     }
   ],
   config: {
-    targetProfitPercent: 0.15, // +15% default (overridden by saved state/config UI)
-    stopLossPercent: 0.06,      // -6% stop loss
-    maxPositions: 50,          // Invest cash across up to 50 stocks
+    targetProfitPercent: 0.10, // +10.0% realistic swing target
+    stopLossPercent: 0.04,      // -4.0% tight risk control (2.5:1 reward-to-risk ratio)
+    maxPositions: 20,          // Disciplined focus on top 20 setups
     aggressiveness: 'aggressive', // conservative, moderate, aggressive, hyper
-    rotationEnabled: true,      // Rotate portfolio when cash is low/slots full
-    rotationMinCandidateScore: 85, // Minimum score needed for a candidate to trigger rotation
-    rotationMaxUnderperformerProfit: -2.0 // Only rotate out holding if it's down at least this %
+    rotationEnabled: false,     // Disabled to eliminate whipsaw churn on normal -2% pullbacks
+    rotationMinCandidateScore: 92, // High bar if rotation is manually turned on
+    rotationMaxUnderperformerProfit: -4.5 // Only rotate if trade is broken beyond -4.5%
   }
 };
 
@@ -698,23 +698,23 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       let sellPrice = close;
       let sellReason = '';
 
-      // --- Trailing Stop-Loss Protection ---
-      // Lock in profits as trade moves in our favor to prevent winning swings from becoming losers
+      // --- Dynamic Trailing Stop-Loss Protection ---
+      // Provide adequate breathing room (3-4% buffer) so normal intraday noise doesn't choke trades
       const maxProfitGainPercent = ((high - position.buyPrice) / position.buyPrice) * 100;
-      if (maxProfitGainPercent >= 4.0) {
-        const trailingLevel = position.buyPrice * 1.01; // Breakeven + 1%
+      if (maxProfitGainPercent >= 6.0) {
+        const trailingLevel = position.buyPrice * 1.025; // Lock in +2.5%
         if (trailingLevel > position.stopLoss) {
           position.stopLoss = trailingLevel;
         }
       }
-      if (maxProfitGainPercent >= 7.5) {
-        const trailingLevel = position.buyPrice * 1.045; // Lock in +4.5%
+      if (maxProfitGainPercent >= 9.0) {
+        const trailingLevel = position.buyPrice * 1.060; // Lock in +6.0%
         if (trailingLevel > position.stopLoss) {
           position.stopLoss = trailingLevel;
         }
       }
-      if (maxProfitGainPercent >= 12.0) {
-        const trailingLevel = position.buyPrice * 1.085; // Lock in +8.5%
+      if (maxProfitGainPercent >= 13.0) {
+        const trailingLevel = position.buyPrice * 1.095; // Lock in +9.5%
         if (trailingLevel > position.stopLoss) {
           position.stopLoss = trailingLevel;
         }
@@ -741,7 +741,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
           const stockRsi = rsiArr[rsiArr.length - 1] || 50;
           const currentGainPct = ((close - position.buyPrice) / position.buyPrice) * 100;
 
-          if (currentGainPct >= 5.0 && stockRsi >= 76) {
+          if (currentGainPct >= 6.0 && stockRsi >= 78) {
             triggerSell = true;
             sellPrice = close;
             sellReason = `RSI Overbought Exhaustion (${stockRsi.toFixed(1)}) Profit Taken`;
@@ -1112,20 +1112,20 @@ async function reEvaluateHoldings() {
 
     // --- Trailing Stop-Loss Protection ---
     const maxProfitGainPercent = ((high - position.buyPrice) / position.buyPrice) * 100;
-    if (maxProfitGainPercent >= 4.0) {
-      const trailingLevel = position.buyPrice * 1.01;
+    if (maxProfitGainPercent >= 6.0) {
+      const trailingLevel = position.buyPrice * 1.025;
       if (trailingLevel > position.stopLoss) {
         position.stopLoss = trailingLevel;
       }
     }
-    if (maxProfitGainPercent >= 7.5) {
-      const trailingLevel = position.buyPrice * 1.045;
+    if (maxProfitGainPercent >= 9.0) {
+      const trailingLevel = position.buyPrice * 1.060;
       if (trailingLevel > position.stopLoss) {
         position.stopLoss = trailingLevel;
       }
     }
-    if (maxProfitGainPercent >= 12.0) {
-      const trailingLevel = position.buyPrice * 1.085;
+    if (maxProfitGainPercent >= 13.0) {
+      const trailingLevel = position.buyPrice * 1.095;
       if (trailingLevel > position.stopLoss) {
         position.stopLoss = trailingLevel;
       }
