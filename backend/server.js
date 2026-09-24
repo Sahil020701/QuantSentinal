@@ -19,14 +19,38 @@ const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/quant_se
 app.use(cors());
 app.use(express.json());
 
-// Helper to get today's date formatted in UTC (matching Yahoo's trading calendar)
-function getTodayUTCDateString() {
-  const d = new Date();
-  const year = d.getUTCFullYear();
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+// Helper to get the latest *completed* trading session date in IST.
+// NSE market hours: 09:15–15:30 IST (UTC+5:30).
+// - If it's a weekday AND past 15:30 IST  → use today's IST date (session is closed).
+// - Otherwise (pre-market, weekend, holiday) → step back to the previous calendar day
+//   so that yfinance always finds a fully closed bar and the simulation can run.
+function getLatestTradingDateIST() {
+  // Current time in IST
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+  const istNow = new Date(now.getTime() + istOffset);
+
+  const dayOfWeek = istNow.getUTCDay(); // 0=Sun, 6=Sat in IST
+  const istHHMM   = istNow.getUTCHours() * 100 + istNow.getUTCMinutes();
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const toDateStr = (d) =>
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+
+  // Market is "done for today" only on Mon-Fri after 15:30 IST
+  const marketSessionComplete = (dayOfWeek >= 1 && dayOfWeek <= 5 && istHHMM >= 1530);
+
+  if (marketSessionComplete) {
+    return toDateStr(istNow); // today's IST date — session has closed
+  }
+
+  // Step back one calendar day to find the last completed session date
+  const yesterday = new Date(istNow.getTime() - 24 * 60 * 60 * 1000);
+  return toDateStr(yesterday);
 }
+
+// Backwards-compatible alias used throughout server routes
+const getTodayUTCDateString = getLatestTradingDateIST;
 
 // GET Portfolio (Includes automated catch-up simulation)
 app.get('/api/portfolio', async (req, res) => {
