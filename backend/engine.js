@@ -523,6 +523,13 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     const stockReturn20d = pastClose > 0 ? ((currentClose - pastClose) / pastClose) : 0;
     if (len >= 20 && stockReturn20d < -0.02) continue;
 
+    // Filter 4: Reject already-extended stocks (chasing after big move)
+    // If a stock has already run >12% in the last 10 days, the risk/reward is poor
+    const lookback10d = Math.min(10, len - 1);
+    const close10dAgoStock = closes[len - 1 - lookback10d];
+    const stockReturn10d = close10dAgoStock > 0 ? ((currentClose - close10dAgoStock) / close10dAgoStock) : 0;
+    if (len >= 10 && stockReturn10d > 0.12) continue; // Skip — already extended, high whipsaw risk
+
     // Candlestick Buying Pressure: Close Location Value (CLV)
     const candleRange = currentHigh - currentLow;
     const clv = candleRange > 0 ? (currentClose - currentLow) / candleRange : 0.5;
@@ -534,17 +541,56 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     let reason = '';
     let strategyName = '';
 
-    // --- Institutional Strategy 1: Volume-Confirmed Controlled Breakout ---
+    // ----------------------------------------------------------------
+    // STRATEGY 0: Pre-Breakout Base (VCP / Tight Consolidation)
+    // Catches the stock BEFORE the 20-day breakout fires.
+    // Criteria: Near 20d highs, contracting volatility, trend aligned.
+    // This is the earliest, lowest-risk entry point.
+    // ----------------------------------------------------------------
+    const high20d = Math.max(...highs.slice(Math.max(0, len - 21), len - 1));
+    const atrPrev5 = len >= 6 ? calculateATR(highs.slice(len-6, len), lows.slice(len-6, len), closes.slice(len-6, len), 5) : atrArray;
+    const atrCurrent5 = (atrPrev5[atrPrev5.length - 1] || currentAtr);
+    // ATR contraction: current 5-day ATR is shrinking vs 14-day ATR (low volatility base)
+    const atrContraction = atrCurrent5 < currentAtr * 0.85;
+    // Volume drying up during consolidation (confirming accumulation)
+    const volumeDryUp = currentRvol < 1.0;
+    // Price within 5% of 20d high (building a base near highs, not breaking out yet)
+    const nearHighBase = currentClose >= high20d * 0.95 && currentClose < high20d * 1.002;
+
     if (
+      !buySignal &&
+      nearHighBase &&
+      atrContraction &&
+      volumeDryUp &&
+      ema50 && ema20 > ema50 &&       // Uptrend confirmed: EMA stack aligned
+      ema20Slope > 0 &&               // EMA20 still rising (not topping)
+      rsiVal >= 50 && rsiVal <= 68 && // Momentum building but not overbought
+      currentClose > ema20 * 1.00 &&  // Above EMA20 (uptrend)
+      currentClose <= ema20 * 1.06 && // But not extended
+      stockReturn10d <= 0.08 &&       // Did not run hard recently (not chasing)
+      currentClose >= currentOpen     // Green day (no distribution)
+    ) {
+      buySignal = true;
+      strategyName = 'PRE_BREAKOUT_BASE';
+      baseScore = 88;
+      reason = `Tight base forming near 20d highs with contracting volatility (ATR compression, RSI: ${rsiVal.toFixed(1)}). Early entry before breakout.`;
+    }
+
+    // ----------------------------------------------------------------
+    // STRATEGY 1: Volume-Confirmed Breakout (TIGHTENED)
+    // Only buy breakouts within 4% of EMA20 — prevents buying extended.
+    // Reject if stock has already run >8% in 10 days (chasing).
+    // ----------------------------------------------------------------
+    else if (
       breakout20.isBullishBreakout &&
       currentClose > ema20 &&
-      (ema20 > ema50 || currentRvol >= 1.35) &&
-      currentRvol >= 1.10 &&
-      rsiVal >= 48 &&
-      rsiVal <= 75 &&
+      (ema20 > ema50 || currentRvol >= 1.5) && // Require stronger volume if EMA not stacked
+      currentRvol >= 1.20 &&           // Raised from 1.10 — must have real volume surge
+      rsiVal >= 50 && rsiVal <= 72 &&  // Tightened upper RSI: 72 (was 75) — avoid overbought breakouts
       currentClose >= currentOpen &&
-      clv >= 0.50 &&
-      currentClose <= ema20 * 1.08
+      clv >= 0.55 &&                   // Raised from 0.50 — require stronger close within candle
+      currentClose <= ema20 * 1.04 &&  // TIGHTENED: was 1.08 — now only buy within 4% of EMA20
+      stockReturn10d <= 0.08           // Reject if already up 8%+ in 10 days (late entry)
     ) {
       buySignal = true;
       strategyName = 'MOMENTUM_BREAKOUT';
@@ -552,17 +598,28 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       reason = `Fresh 20-day breakout with volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`;
     }
 
-    // --- Institutional Strategy 2: Support Pullback / 20 EMA Bounce ---
+    // ----------------------------------------------------------------
+    // STRATEGY 2: Support Pullback / 20 EMA Bounce (TIGHTENED)
+    // Require: Stock was above EMA20 for 3+ of last 5 days (confirms it's
+    // a genuine pullback to support, not a failed breakout)
+    // ----------------------------------------------------------------
     else if (
-      currentClose >= ema20 * 0.980 &&
-      currentClose <= ema20 * 1.040 &&
+      currentClose >= ema20 * 0.982 && // Tightened: was 0.980
+      currentClose <= ema20 * 1.035 && // Tightened: was 1.040
       currentClose > currentOpen &&
       currentClose > prevClose &&
-      currentRvol >= 0.85 && // Allow slightly lower volume — institutions sometimes accumulate quietly
-      clv >= 0.50 &&
-      rsiVal >= 44 &&
-      rsiVal <= 72 &&
-      (ema50 ? ema20 >= ema50 * 0.97 : true)
+      currentRvol >= 0.90 &&           // Raised from 0.85 — require at least avg volume
+      clv >= 0.55 &&                   // Raised from 0.50
+      rsiVal >= 45 && rsiVal <= 68 &&  // Tightened: was 44-72
+      (ema50 ? ema20 >= ema50 * 0.98 : true) &&
+      // KEY: Confirm this is a pullback, not a breakdown
+      // At least 3 of the last 5 closes must have been above EMA20 (confirmed uptrend)
+      (() => {
+        const ema20Prev = ema20Array.slice(len - 6, len - 1);
+        const closesPrev5 = closes.slice(len - 6, len - 1);
+        const daysAboveEma = ema20Prev.filter((e, i) => e !== null && closesPrev5[i] > e).length;
+        return daysAboveEma >= 3;
+      })()
     ) {
       buySignal = true;
       strategyName = 'SUPPORT_PULLBACK';
@@ -570,36 +627,41 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       reason = `Bullish support bounce off 20 EMA in strong primary uptrend (RSI: ${rsiVal.toFixed(1)}, Green Reversal).`;
     }
 
-    // --- Strategy 3: Fresh EMA20 Crossover Inception (Early Trend Turn) ---
+    // ----------------------------------------------------------------
+    // STRATEGY 3: EMA20 Crossover Inception (Early Trend Turn)
+    // Price crosses above EMA20 TODAY with volume — earliest trend signal.
+    // This is already a good early-entry signal, tighten CLV slightly.
+    // ----------------------------------------------------------------
     else if (
       currentClose > ema20 &&
-      prevClose <= ema20 &&
+      prevClose <= ema20 &&            // Crossover happened today
       currentClose > currentOpen &&
-      currentRvol >= 1.2 &&
-      rsiVal >= 50 &&
-      rsiVal <= 68 &&
-      clv >= 0.55
+      currentRvol >= 1.25 &&           // Raised slightly: was 1.2
+      rsiVal >= 48 && rsiVal <= 66 &&  // Tightened: was 50-68
+      clv >= 0.58                      // Raised: was 0.55 — must close strongly in upper candle
     ) {
       buySignal = true;
       strategyName = 'TREND_INCEPTION';
-      baseScore = 84;
+      baseScore = 85;
       reason = `Price cross above 20 EMA with volume expansion (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}).`;
     }
 
-    // --- Strategy 4: MACD Momentum Expansion in Aligned Trend ---
+    // ----------------------------------------------------------------
+    // STRATEGY 4: MACD Momentum Expansion (keep tightest filter)
+    // Only valid when close is within 3% of EMA20 (no chasing)
+    // ----------------------------------------------------------------
     else if (
       currentClose > ema20 &&
       (ema50 ? ema20 >= ema50 * 0.98 : true) &&
-      macdLine !== null &&
-      signalLine !== null &&
+      macdLine !== null && signalLine !== null &&
       macdLine > signalLine &&
       (prevMacdLine <= prevSignalLine || (histogram > 0 && prevHistogram !== null && histogram > prevHistogram)) &&
-      rsiVal >= 50 &&
-      rsiVal <= 68 &&
-      currentRvol >= 1.0 &&
+      rsiVal >= 50 && rsiVal <= 66 &&
+      currentRvol >= 1.1 &&
       currentClose >= currentOpen &&
-      clv >= 0.50 &&
-      currentClose <= ema20 * 1.05
+      clv >= 0.55 &&
+      currentClose <= ema20 * 1.03 &&  // Very tight: only within 3% of EMA20
+      stockReturn10d <= 0.06           // Reject if already moved 6%+ in 10d
     ) {
       buySignal = true;
       strategyName = 'MACD_EXPANSION';
@@ -608,14 +670,19 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     }
 
     if (buySignal) {
-      // --- Multi-Factor Confluence Scoring Adjustments (0-100 scale) ---
+      // --- Multi-Factor Confluence Scoring (0-100 scale) ---
       let score = baseScore;
 
-      // 0. Relative Strength (RS) Momentum Outperformance Bonus
-      if (stockReturn20d >= 0.12) score += 8;      // Elite market leader (+12%+ in 20d)
-      else if (stockReturn20d >= 0.06) score += 5; // Strong outperformer
-      else if (stockReturn20d >= 0.02) score += 2;
-      else if (stockReturn20d < -0.04) score -= 5;
+      // 0. Relative Strength: Reward steady performers, penalize extended runners
+      // We want stocks in early/mid rally, NOT stocks already extended
+      if (stockReturn20d >= 0.06 && stockReturn20d <= 0.18) score += 5;  // Sweet spot: 6-18% 20d move
+      else if (stockReturn20d >= 0.02 && stockReturn20d < 0.06) score += 3; // Just getting going
+      else if (stockReturn20d > 0.18) score -= 4;  // Already ran hard — late entry penalty
+      else if (stockReturn20d < -0.03) score -= 5; // Laggard
+
+      // 0b. Short-term extension penalty: penalize stocks up >6% in last 10 days
+      if (stockReturn10d > 0.06) score -= 4;
+      if (stockReturn10d > 0.09) score -= 3; // Extra penalty if very extended
 
       // 1. Institutional Volume Confirmation
       if (currentRvol >= 2.0) score += 6;
@@ -623,22 +690,24 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       else if (currentRvol >= 1.2) score += 2;
       else if (currentRvol < 0.9) score -= 4;
 
-      // 2. Trend Stacking Strength
+      // 2. Trend Stacking Strength (price > EMA20 > EMA50, EMA20 rising)
       if (currentClose > ema20 && ema50 && ema20 > ema50 && ema20Slope > 0.3) score += 4;
 
-      // 3. Candle Strength (Close location value)
+      // 3. Candle Strength (close location value)
       if (clv >= 0.75) score += 4;
-      else if (clv < 0.50) score -= 3;
+      else if (clv < 0.55) score -= 3;
 
-      // 4. Proximity to 20 EMA Support
+      // 4. Proximity to EMA20 — reward entries close to support
       const distFromEma20 = (currentClose - ema20) / ema20;
-      if (distFromEma20 >= 0.002 && distFromEma20 <= 0.025) {
-        score += 5; // Low-risk entry near support
+      if (distFromEma20 >= 0.001 && distFromEma20 <= 0.03) {
+        score += 6; // Excellent low-risk entry near EMA20
+      } else if (distFromEma20 > 0.03 && distFromEma20 <= 0.05) {
+        score -= 2; // Slightly extended
       } else if (distFromEma20 > 0.05) {
-        score -= 6; // Too far from support
+        score -= 8; // Too far from support — high whipsaw risk
       }
 
-      // 5. ADX Trend Strength Bonus
+      // 5. ADX Trend Strength
       if (currentAdx >= 28) score += 4;
       else if (currentAdx < 16) score -= 4;
 
