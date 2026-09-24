@@ -96,8 +96,8 @@ const INITIAL_STATE = {
     }
   ],
   config: {
-    targetProfitPercent: 0.10, // +10.0% realistic swing target
-    stopLossPercent: 0.04,      // -4.0% tight risk control (2.5:1 reward-to-risk ratio)
+    targetProfitPercent: 0.12, // +12.0% swing profit target
+    stopLossPercent: 0.06,      // -6.0% optimal risk buffer (prevents noise stop-outs on 2-3% ATR swings)
     maxPositions: 20,          // Disciplined focus on top 20 setups
     aggressiveness: 'aggressive', // conservative, moderate, aggressive, hyper
     rotationEnabled: false,     // Disabled to eliminate whipsaw churn on normal -2% pullbacks
@@ -426,8 +426,8 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     // Avoid buying what we already hold
     if (currentHoldings.some(h => h.symbol === stock.symbol)) continue;
 
-    // Sector limit: max 3 positions per sector (except ETFs) to prevent concentration risk
-    if (stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= 3) {
+    // Sector limit: max 4 positions per sector (except ETFs) to prevent concentration risk
+    if (stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= 4) {
       continue;
     }
 
@@ -508,7 +508,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       rsiVal <= 68 &&
       currentClose >= currentOpen &&
       clv >= 0.60 &&                   // Raised: strong close in upper part of range
-      currentClose <= ema20 * 1.045 &&
+      currentClose <= ema20 * 1.060 && // Allow genuine 20-day breakout candles up to 6% above EMA20
       currentAdx >= 18                 // ADX trend confirmation (18+ = trend forming)
     ) {
       buySignal = true;
@@ -603,7 +603,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     ) {
       buySignal = true;
       strategyName = 'SHORT_TERM_MOMENTUM';
-      baseScore = 77;
+      baseScore = 73;
       reason = `Short-term momentum: price above rising EMA20 (RSI: ${rsiVal.toFixed(1)}, RVOL: ${currentRvol.toFixed(1)}x).`;
     }
 
@@ -651,9 +651,9 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       // Clamp score between 50 and 100
       score = Math.max(50, Math.min(100, Math.round(score)));
 
-      // Quality Threshold: 76 in normal markets (raised from 72 to prevent marginal trades),
-      // 83 in RISK_OFF (only high-conviction institutional setups survive).
-      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 83 : 76;
+      // Quality Threshold: 78 in normal markets (requires genuine confluence to buy),
+      // 85 in RISK_OFF (only highest-conviction institutional setups survive).
+      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 85 : 78;
       if (score >= minScoreThreshold) {
         candidates.push({
           symbol: stock.symbol,
@@ -761,19 +761,19 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       let sellReason = '';
 
       // --- Dynamic Trailing Stop-Loss Protection (Gentler Steps) ---
-      // Let trades breathe fully to 6% before locking any profit.
-      // Step 1 at 6%: lock only breakeven (0%) — keeps us from turning a winner into a loser.
-      // Step 2 at 10%: lock +4% — reward is clearly materialising.
-      // Step 3 at 15%: lock +9% — let the big runners run.
+      // Let trades breathe fully to 8% before locking any profit.
+      // Step 1 at 8%: lock breakeven +0.5% (1.005) — prevents premature chop-outs on normal re-tests
+      // Step 2 at 11%: lock +5% — reward is clearly materialising
+      // Step 3 at 15%: lock +9% — let the big runners run
       const maxProfitGainPercent = ((high - position.buyPrice) / position.buyPrice) * 100;
-      if (maxProfitGainPercent >= 6.0) {
-        const trailingLevel = position.buyPrice * 1.000; // Lock in breakeven
+      if (maxProfitGainPercent >= 8.0) {
+        const trailingLevel = position.buyPrice * 1.005; // Lock in breakeven with buffer
         if (trailingLevel > position.stopLoss) {
           position.stopLoss = trailingLevel;
         }
       }
-      if (maxProfitGainPercent >= 10.0) {
-        const trailingLevel = position.buyPrice * 1.040; // Lock in +4%
+      if (maxProfitGainPercent >= 11.0) {
+        const trailingLevel = position.buyPrice * 1.050; // Lock in +5%
         if (trailingLevel > position.stopLoss) {
           position.stopLoss = trailingLevel;
         }
@@ -786,10 +786,15 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
 
       // 1. Check Stop-Loss / Trailing Stop Trigger (Risk-First)
-      if (low <= position.stopLoss) {
+      // For Trailing Stops (already locked in profit > buyPrice), trigger on intraday low to guarantee profit.
+      // For initial risk stop-loss: check if CLOSE <= stopLoss (end-of-day confirmation prevents intraday wick stop-outs),
+      // OR if low <= position.stopLoss * 0.96 (catastrophic intra-day plunge/circuit breaker beyond stop buffer).
+      const isTrailingStop = position.stopLoss > position.buyPrice;
+      const initialStopBreach = close <= position.stopLoss || low <= position.stopLoss * 0.96;
+      if (isTrailingStop ? low <= position.stopLoss : initialStopBreach) {
         triggerSell = true;
-        sellPrice = position.stopLoss; // Executed at stop loss
-        sellReason = position.stopLoss > position.buyPrice ? 'Trailing Stop Profit Locked' : 'Stop Loss Triggered';
+        sellPrice = isTrailingStop ? position.stopLoss : Math.min(close, position.stopLoss);
+        sellReason = isTrailingStop ? 'Trailing Stop Profit Locked' : 'Stop Loss Triggered';
       } 
       // 2. Check Target Profit Hit
       else if (high >= position.targetPrice) {
@@ -816,10 +821,9 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
           }
         }
 
-        // 4. Stale Trade Exit (Time Stop): Release stagnant capital after 20+ trading days if underperforming.
-        // Extended from 15 to 20 days — gives trades more time to develop momentum.
-        // Threshold lowered from 3% to 2% — only exit if truly flat (not just slow).
-        if (!triggerSell && tradingDaysHeld >= 20 && currentGainPct < 2.0) {
+        // 4. Stale Trade Exit (Time Stop): Release stagnant capital after 25+ trading days if flat or negative.
+        // Don't cut trades that are green or consolidating constructively.
+        if (!triggerSell && tradingDaysHeld >= 25 && currentGainPct < 1.0) {
           triggerSell = true;
           sellPrice = close;
           sellReason = `Stale Trade Time Exit (${tradingDaysHeld} Days Flat)`;
@@ -884,7 +888,13 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
       const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.08);
       const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
-      const qty = Math.floor(capitalAllocation / targetStock.price);
+      let qty = Math.floor(capitalAllocation / targetStock.price);
+
+      // High-priced momentum compounders (e.g. Bosch Ltd., Bajaj Auto):
+      // Allow buying 1 share if cash is sufficient (preserving min reserve) and price <= 35% of portfolio
+      if (qty <= 0 && state.cash >= targetStock.price + minCashReserve && targetStock.price <= totalPortfolioValue * 0.35) {
+        qty = 1;
+      }
       if (qty <= 0) return false;
 
       const cost = qty * targetStock.price;
@@ -915,10 +925,15 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     };
 
     // --- Pass 1: Deploy cash to qualified scanner candidates ---
+    let todayBuysCount = 0;
+    const MAX_BUYS_PER_DAY = 3; // Stagger entries across days to prevent blowing cash at local market tops
+
     for (const targetStock of candidates) {
-      // Sector diversification: prevent more than 3 open positions in same sector (except ETFs)
+      if (todayBuysCount >= MAX_BUYS_PER_DAY) break;
+
+      // Sector diversification: prevent more than 4 open positions in same sector (except ETFs)
       const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 3) continue;
+      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 4) continue;
 
       const availableSlots = state.config.maxPositions - state.holdings.length;
       let canBuy = (availableSlots > 0 && state.cash >= 1000);
@@ -963,8 +978,10 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
 
       if (canBuy && state.cash >= 1000) {
-        executeBuy(targetStock);
-        if (state.holdings.length >= state.config.maxPositions) break;
+        if (executeBuy(targetStock)) {
+          todayBuysCount++;
+        }
+        if (state.holdings.length >= state.config.maxPositions || todayBuysCount >= MAX_BUYS_PER_DAY) break;
       }
     }
 
@@ -991,16 +1008,16 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         }
       }
 
-      if (cashRatio > 0.40 && state.holdings.length < state.config.maxPositions && niftyAboveEma20) {
+      if (cashRatio > 0.40 && state.holdings.length < state.config.maxPositions && niftyAboveEma20 && todayBuysCount < MAX_BUYS_PER_DAY) {
         // Build a force-deploy candidate list from ALL watchlist stocks not already held
         const heldSymbols = new Set(state.holdings.map(h => h.symbol));
         const forceCandidates = [];
 
         for (const stock of WATCHLIST) {
           if (heldSymbols.has(stock.symbol)) continue;
-          // Sector cap still enforced at 3
+          // Sector cap still enforced at 4
           const secCount = state.holdings.filter(h => h.sector === stock.sector).length;
-          if (stock.sector !== 'ETFs' && secCount >= 3) continue;
+          if (stock.sector !== 'ETFs' && secCount >= 4) continue;
 
           const stockHistory = cachedData[stock.symbol];
           if (!stockHistory || stockHistory.length === 0) continue;
@@ -1290,14 +1307,14 @@ async function reEvaluateHoldings() {
 
     // --- Trailing Stop-Loss Protection (synced with main engine steps) ---
     const maxProfitGainPercent = ((high - position.buyPrice) / position.buyPrice) * 100;
-    if (maxProfitGainPercent >= 6.0) {
-      const trailingLevel = position.buyPrice * 1.000; // Lock in breakeven
+    if (maxProfitGainPercent >= 8.0) {
+      const trailingLevel = position.buyPrice * 1.005; // Lock in breakeven with buffer
       if (trailingLevel > position.stopLoss) {
         position.stopLoss = trailingLevel;
       }
     }
-    if (maxProfitGainPercent >= 10.0) {
-      const trailingLevel = position.buyPrice * 1.040; // Lock in +4%
+    if (maxProfitGainPercent >= 11.0) {
+      const trailingLevel = position.buyPrice * 1.050; // Lock in +5%
       if (trailingLevel > position.stopLoss) {
         position.stopLoss = trailingLevel;
       }
@@ -1310,10 +1327,12 @@ async function reEvaluateHoldings() {
     }
 
     // Re-check using the stopLoss and targetPrice
-    if (low <= position.stopLoss) {
+    const isTrailingStop = position.stopLoss > position.buyPrice;
+    const initialStopBreach = close <= position.stopLoss || low <= position.stopLoss * 0.96;
+    if (isTrailingStop ? low <= position.stopLoss : initialStopBreach) {
       triggerSell = true;
-      sellPrice = position.stopLoss;
-      sellReason = position.stopLoss > position.buyPrice ? 'Trailing Stop Profit Locked' : 'Stop Loss Triggered';
+      sellPrice = isTrailingStop ? position.stopLoss : Math.min(close, position.stopLoss);
+      sellReason = isTrailingStop ? 'Trailing Stop Profit Locked' : 'Stop Loss Triggered';
     } else if (high >= position.targetPrice) {
       triggerSell = true;
       sellPrice = position.targetPrice;
@@ -1324,7 +1343,7 @@ async function reEvaluateHoldings() {
       const tradingDaysHeld = (buyIdx !== -1 && currIdx !== -1) ? (currIdx - buyIdx) : Math.round((new Date(simDate) - new Date(position.buyDate)) / (1000 * 60 * 60 * 24));
       const currentGainPct = ((close - position.buyPrice) / position.buyPrice) * 100;
 
-      if (tradingDaysHeld >= 15 && currentGainPct < 3.0) {
+      if (tradingDaysHeld >= 25 && currentGainPct < 1.0) {
         triggerSell = true;
         sellPrice = close;
         sellReason = `Stale Trade Time Exit (${tradingDaysHeld} Days Flat)`;
@@ -1388,9 +1407,9 @@ async function deployIdleCash(simDate) {
 
   let newBuysCount = 0;
   for (const targetStock of candidates) {
-    // Sector diversification check: maximum 3 positions per sector (except ETFs)
+    // Sector diversification check: maximum 4 positions per sector (except ETFs)
     const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-    if (targetStock.sector !== 'ETFs' && currentSectorCount >= 3) {
+    if (targetStock.sector !== 'ETFs' && currentSectorCount >= 4) {
       continue;
     }
 
@@ -1405,8 +1424,13 @@ async function deployIdleCash(simDate) {
     if (state.cash <= minCashReserve) break;
     const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.08);
     const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
-    const qty = Math.floor(capitalAllocation / targetStock.price);
+    let qty = Math.floor(capitalAllocation / targetStock.price);
 
+    // High-priced momentum compounders (e.g. Bosch Ltd., Bajaj Auto):
+    // Allow buying 1 share if cash is sufficient (preserving min reserve) and price <= 35% of portfolio
+    if (qty <= 0 && state.cash >= targetStock.price + minCashReserve && targetStock.price <= totalPortfolioValue * 0.35) {
+      qty = 1;
+    }
 
     if (qty > 0) {
       const cost = qty * targetStock.price;

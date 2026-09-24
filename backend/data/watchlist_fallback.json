@@ -863,5 +863,15 @@
     "symbol": "ZYDUSLIFE.NS",
     "name": "Zydus Lifesciences Ltd.",
     "sector": "Healthcare"
+  },
+  {
+    "symbol": "SYRMA.NS",
+    "name": "Syrma SGS Technology Ltd.",
+    "sector": "Capital Goods"
+  },
+  {
+    "symbol": "PTCIL.NS",
+    "name": "PTC Industries Ltd.",
+    "sector": "Capital Goods"
   }
 ]

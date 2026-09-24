@@ -84,6 +84,8 @@ CORE_BUILTIN_WATCHLIST = [
     {"symbol": "TVSMOTOR.NS", "name": "TVS Motor Company Ltd.", "sector": "Automobile and Auto Components"},
     {"symbol": "LODHA.NS", "name": "Macrotech Developers Ltd.", "sector": "Realty"},
     {"symbol": "MOTHERSON.NS", "name": "Samvardhana Motherson International Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "SYRMA.NS", "name": "Syrma SGS Technology Ltd.", "sector": "Capital Goods"},
+    {"symbol": "PTCIL.NS", "name": "PTC Industries Ltd.", "sector": "Capital Goods"},
 ]
 
 def load_fallback_watchlist(output_file):
