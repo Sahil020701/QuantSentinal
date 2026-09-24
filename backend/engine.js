@@ -968,15 +968,30 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
     }
 
-    // --- Pass 2: Urgent Cash Deployment — if cash > 20%, force-fill empty slots ---
-    // This enforces the 90-95% invested mandate. Scans ALL stocks (not just top candidates)
-    // for any showing basic positive short-term momentum, and buys the best available.
+    // --- Pass 2: Smart Cash Deployment — fires only when >40% cash is idle AND market is healthy ---
+    // Raised threshold from 20% → 40% to avoid premature deployment into mediocre setups.
+    // Added NIFTY trend gate: if NIFTYBEES.NS is below its own EMA20, the broad market is weak
+    // and we should conserve cash rather than force-buying individual stocks.
+    // Candidate quality bar is now 76 (same as organic strategy minimum), not 65.
     {
       let hv2 = 0; for (const h of state.holdings) hv2 += h.value;
       const portfolioVal2 = state.cash + hv2;
       const cashRatio = portfolioVal2 > 0 ? state.cash / portfolioVal2 : 0;
 
-      if (cashRatio > 0.20 && state.holdings.length < state.config.maxPositions) {
+      // --- NIFTY Trend Gate ---
+      let niftyAboveEma20 = true; // default allow if data unavailable
+      const niftyData = cachedData['NIFTYBEES.NS'];
+      if (niftyData && niftyData.length > 0) {
+        const niftyDayIdx = niftyData.findIndex(row => row.date === simDate);
+        if (niftyDayIdx >= 20) {
+          const niftySub = niftyData.slice(0, niftyDayIdx + 1);
+          const niftyClose = niftySub.map(r => r.close);
+          const niftyEma20 = calculateEMA(niftyClose, 20);
+          niftyAboveEma20 = niftyClose[niftyClose.length - 1] > niftyEma20[niftyEma20.length - 1];
+        }
+      }
+
+      if (cashRatio > 0.40 && state.holdings.length < state.config.maxPositions && niftyAboveEma20) {
         // Build a force-deploy candidate list from ALL watchlist stocks not already held
         const heldSymbols = new Set(state.holdings.map(h => h.symbol));
         const forceCandidates = [];
@@ -1014,34 +1029,51 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
           const rvol2 = rvols2[len2 - 1] || 1.0;
 
           if (!ema20_2 || !rsi2) continue;
-          // Force-deploy quality gate: must be above BOTH EMA20 and EMA50 (trend structure),
-          // RSI in healthy zone (50-70), green candle, trending market (ADX >= 18).
-          // This prevents deploying into downtrending / sideways stocks just to fill slots.
+
+          // Force-deploy quality gate — now same bar as organic entries:
+          // EMA20 > EMA50 uptrend, RSI 52-70, green candle, ADX >= 18 trending, not overextended.
+          // Previously score floor was 65 (below the 76 organic threshold) — this was buying
+          // stocks that the organic scanner had ALREADY REJECTED. Fixed.
           if (
             close2 > ema20_2 &&
-            ema50_2 && close2 > ema50_2 &&     // Must be above EMA50 too
-            rsi2 >= 50 && rsi2 <= 70 &&         // Strictly bullish RSI zone
-            close2 >= open2 &&                  // Green candle
-            rvol2 >= 0.8 &&                     // Reasonable volume
-            adx2 >= 18                          // Trending environment (not sideways)
+            ema50_2 && ema20_2 > ema50_2 &&        // EMA20 > EMA50 = uptrend structure
+            close2 <= ema20_2 * 1.06 &&             // Not overextended (>6% above EMA20 = bad R:R)
+            rsi2 >= 52 && rsi2 <= 70 &&             // Raised floor to 52 — more selective
+            close2 >= open2 &&                      // Green candle — momentum day
+            rvol2 >= 0.9 &&                         // Decent volume participation
+            adx2 >= 20                              // Meaningful trend strength
           ) {
+            // Score 76–86: same floor as organic, bonus for proximity to EMA20
             const distScore = Math.max(0, 10 - ((close2 - ema20_2) / ema20_2) * 100);
-            forceCandidates.push({ ...stock, price: close2, score: 65 + distScore, reason: `Force-deploy: above EMA20 (RSI ${rsi2.toFixed(1)})`, technicalStats: { rsi: rsi2, ema20: ema20_2, ema50: ema50_2 || ema20_2, rvol: rvol2, atr: 0, macdHist: 0 } });
+            const forceScore = 76 + distScore;
+            forceCandidates.push({
+              ...stock,
+              price: close2,
+              score: forceScore,
+              reason: `Force-deploy: above EMA20 (RSI ${rsi2.toFixed(1)})`,
+              technicalStats: { rsi: rsi2, ema20: ema20_2, ema50: ema50_2 || ema20_2, rvol: rvol2, atr: 0, macdHist: 0 }
+            });
           }
         }
 
-        // Sort by score (proximity to EMA20 preferred) and deploy
-        forceCandidates.sort((a, b) => b.score - a.score);
-        for (const fc of forceCandidates) {
-          if (state.holdings.length >= state.config.maxPositions) break;
-          let hv3 = 0; for (const h of state.holdings) hv3 += h.value;
-          if (state.cash / (state.cash + hv3) <= 0.08) break; // stop at 8% cash remaining
-          if (!state.holdings.some(h => h.symbol === fc.symbol)) {
-            executeBuy(fc);
+        if (forceCandidates.length > 0) {
+          // Sort by score (proximity to EMA20 preferred) and deploy
+          forceCandidates.sort((a, b) => b.score - a.score);
+          for (const fc of forceCandidates) {
+            if (state.holdings.length >= state.config.maxPositions) break;
+            let hv3 = 0; for (const h of state.holdings) hv3 += h.value;
+            if (state.cash / (state.cash + hv3) <= 0.10) break; // keep 10% cash buffer
+            if (!state.holdings.some(h => h.symbol === fc.symbol)) {
+              executeBuy(fc);
+            }
           }
+          const hv4 = state.holdings.reduce((s, h) => s + h.value, 0);
+          console.log(`[${simDate}] FORCE-DEPLOY: Cash ratio was ${(cashRatio * 100).toFixed(0)}% → now ${(state.cash / (state.cash + hv4) * 100).toFixed(0)}% (${state.holdings.length} positions)`);
+        } else {
+          console.log(`[${simDate}] FORCE-DEPLOY SKIPPED: Cash ${(cashRatio * 100).toFixed(0)}% idle but no quality candidates found — conserving cash.`);
         }
-        const hv4 = state.holdings.reduce((s, h) => s + h.value, 0);
-        console.log(`[${simDate}] FORCE-DEPLOY: Cash ratio was ${(cashRatio * 100).toFixed(0)}% → now ${(state.cash / (state.cash + hv4) * 100).toFixed(0)}% (${state.holdings.length} positions)`);
+      } else if (cashRatio > 0.40 && !niftyAboveEma20) {
+        console.log(`[${simDate}] FORCE-DEPLOY BLOCKED: Cash ${(cashRatio * 100).toFixed(0)}% idle but NIFTY is below EMA20 — market is weak, holding cash.`);
       }
     }
 

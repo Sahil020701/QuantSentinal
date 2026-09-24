@@ -73,7 +73,17 @@ CORE_BUILTIN_WATCHLIST = [
     {"symbol": "BAJAJFINSV.NS", "name": "Bajaj Finserv Ltd.", "sector": "Financial Services"},
     {"symbol": "TATASTEEL.NS", "name": "Tata Steel Ltd.", "sector": "Metals & Mining"},
     {"symbol": "ULTRACEMCO.NS", "name": "UltraTech Cement Ltd.", "sector": "Construction Materials"},
-    {"symbol": "ASIANPAINT.NS", "name": "Asian Paints Ltd.", "sector": "Consumer Durables"}
+    {"symbol": "ASIANPAINT.NS", "name": "Asian Paints Ltd.", "sector": "Consumer Durables"},
+    # ── Stocks added to guarantee coverage (may fall out of live NSE Nifty 200 CSV) ──
+    {"symbol": "TATAMOTORS.NS", "name": "Tata Motors Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "BAJAJ-AUTO.NS", "name": "Bajaj Auto Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "MAXHEALTH.NS", "name": "Max Healthcare Institute Ltd.", "sector": "Healthcare"},
+    {"symbol": "BOSCHLTD.NS", "name": "Bosch Ltd.", "sector": "Capital Goods"},
+    {"symbol": "DLF.NS", "name": "DLF Ltd.", "sector": "Realty"},
+    {"symbol": "DIVISLAB.NS", "name": "Divi's Laboratories Ltd.", "sector": "Healthcare"},
+    {"symbol": "TVSMOTOR.NS", "name": "TVS Motor Company Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "LODHA.NS", "name": "Macrotech Developers Ltd.", "sector": "Realty"},
+    {"symbol": "MOTHERSON.NS", "name": "Samvardhana Motherson International Ltd.", "sector": "Automobile and Auto Components"},
 ]
 
 def load_fallback_watchlist(output_file):
