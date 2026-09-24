@@ -260,7 +260,7 @@ async function startServer() {
     await mongoose.connect(MONGO_URI);
     console.log('MongoDB Connected successfully.');
   } catch (err) {
-    console.warn('MongoDB Connection Error (falling back to disk state.json):', err.message);
+    console.warn('MongoDB Connection Warning (falling back to in-memory state):', err.message);
   }
 
   app.listen(PORT, async () => {

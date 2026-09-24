@@ -14,12 +14,8 @@ const {
   calculateADX
 } = require('./utils/indicators');
 const StateModel = require('./models/State');
+const os = require('os');
 
-const STATE_FILE = process.env.NODE_ENV === 'test'
-  ? path.join(__dirname, 'state_test.json')
-  : path.join(__dirname, 'state.json');
-const CACHE_DIR = path.join(__dirname, 'data');
-const CACHE_FILE = path.join(__dirname, 'data', 'historical_cache.json');
 const FALLBACK_WATCHLIST_FILE = path.join(__dirname, 'data', 'watchlist_fallback.json');
 
 const DEFAULT_WATCHLIST = [
@@ -31,21 +27,16 @@ const DEFAULT_WATCHLIST = [
 ];
 
 const WATCHLIST = [];
+let inMemoryState = null;
+let inMemoryMarketData = null; // In-memory runtime cache: { lastUpdated: String, watchlist: Array, data: Object }
 
 function loadWatchlist() {
-  // 1. Try loading from cache file
-  if (fs.existsSync(CACHE_FILE)) {
-    try {
-      const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-      if (cache.watchlist && Array.isArray(cache.watchlist) && cache.watchlist.length > 0) {
-        WATCHLIST.length = 0;
-        WATCHLIST.push(...cache.watchlist);
-        console.log(`Loaded ${WATCHLIST.length} assets from dynamic Nifty 200 watchlist cache.`);
-        return;
-      }
-    } catch (e) {
-      console.warn("Failed to load watchlist from cache, checking fallback:", e.message);
-    }
+  // 1. Try from in-memory cache
+  if (inMemoryMarketData?.watchlist?.length > 0) {
+    WATCHLIST.length = 0;
+    WATCHLIST.push(...inMemoryMarketData.watchlist);
+    console.log(`Loaded ${WATCHLIST.length} assets from in-memory watchlist.`);
+    return;
   }
 
   // 2. Try loading from fallback watchlist file
@@ -106,55 +97,30 @@ const INITIAL_STATE = {
   }
 };
 
-// Ensure directories exist
-function ensureDirectories() {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-  }
-}
-
-// Load current state
+// Load current state (directly from MongoDB with in-memory fallback)
 async function loadState() {
   if (mongoose.connection.readyState === 1) {
     try {
       let doc = await StateModel.findOne({ key: 'simulation_state' });
       if (doc) {
-        const mongoState = doc.toObject();
-        // Keep local file in sync with MongoDB
-        try {
-          fs.writeFileSync(STATE_FILE, JSON.stringify(mongoState, null, 2));
-        } catch (_) {}
-        return mongoState;
+        inMemoryState = doc.toObject();
+        return inMemoryState;
       }
     } catch (e) {
-      console.warn("MongoDB read failed, falling back to local file state:", e.message);
+      console.warn("MongoDB read failed:", e.message);
     }
   }
   
-  if (fs.existsSync(STATE_FILE)) {
-    try {
-      const fileState = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-      // If MongoDB is connected but empty, initialize MongoDB with fileState
-      if (mongoose.connection.readyState === 1) {
-        await saveState(fileState);
-      }
-      return fileState;
-    } catch (e) {
-      console.warn("Local state file corrupted:", e.message);
-    }
+  if (inMemoryState) {
+    return inMemoryState;
   }
 
   return await resetSimulation();
 }
 
-// Save state
+// Save state (directly to MongoDB with in-memory tracking)
 async function saveState(state) {
-  // Always persist state to disk state.json
-  try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-  } catch (e) {
-    console.error("Error saving state file:", e.message);
-  }
+  inMemoryState = { ...state };
 
   // Persist to MongoDB if connected
   if (mongoose.connection.readyState === 1) {
@@ -216,42 +182,28 @@ function formatUTCDate(date) {
 
 let activeUpdatePromise = null;
 
-// Fetch and Cache Yahoo Finance Data via Python yfinance helper script (real-time batch data)
+// Fetch and Store Yahoo Finance Data via Python yfinance helper script into in-memory runtime cache
 async function updateCache(endDateStr, forceRefresh = false) {
-  ensureDirectories();
-  
   const todayStr = formatUTCDate(new Date());
-  const CACHE_MIN_TTL_MS = 15 * 60 * 1000; // 15 minutes minimum threshold between network fetches
-  
-  // Check if cache file exists and is fresh for today (unless forceRefresh is requested & cache is >15 mins old)
-  if (fs.existsSync(CACHE_FILE)) {
-    try {
-      const stats = fs.statSync(CACHE_FILE);
-      const ageMs = Date.now() - stats.mtimeMs;
-      const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-      
-      if (cache.lastUpdated === todayStr && Object.keys(cache.data).length > 0) {
-        if (!forceRefresh || ageMs < CACHE_MIN_TTL_MS) {
-          console.log(`Using cached market data (Cache age: ${Math.round(ageMs / 1000 / 60)} mins).`);
-          return cache.data;
-        }
-      }
-    } catch (e) {
-      console.warn("Corrupted cache file, rebuilding...", e);
+
+  // 1. Check in-memory market data first
+  if (inMemoryMarketData && inMemoryMarketData.lastUpdated === todayStr && inMemoryMarketData.data && Object.keys(inMemoryMarketData.data).length > 0) {
+    if (!forceRefresh) {
+      return inMemoryMarketData.data;
     }
   }
 
   // If there is already an active fetch happening, wait for its completion to prevent race conditions
   if (activeUpdatePromise) {
-    console.log("Waiting for concurrent cache update to finish...");
+    console.log("Waiting for concurrent market data update to finish...");
     return activeUpdatePromise;
   }
 
   // Create update promise and store it globally
   activeUpdatePromise = (async () => {
-    console.log("Cache outdated or missing. Fetching live market data using Python yfinance script...");
+    console.log("Market data outdated or missing. Fetching live market data using Python yfinance script...");
     
-    // Dynamically calculate start date (120 days lookback to ensure 50+ trading bars for technical indicators)
+    // Dynamically calculate start date (365 days lookback to ensure 50+ trading bars for technical indicators)
     const endD = new Date(endDateStr);
     const startD = new Date(endD.getTime() - (365 * 24 * 60 * 60 * 1000));
     const startDateStr = formatUTCDate(startD);
@@ -267,30 +219,49 @@ async function updateCache(endDateStr, forceRefresh = false) {
     }
 
     const pythonScript = path.join(__dirname, 'fetch_data.py');
-    
-    // Execute Python yfinance batch script in a promise
-    await new Promise((resolve, reject) => {
-      exec(`${pythonBin} "${pythonScript}" "${startDateStr}" "${endDateStr}" "${CACHE_FILE}"`, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Python script error: ${error.message}`);
-          console.error(`Stderr: ${stderr}`);
-          reject(error);
-        } else {
-          console.log(`Python script output: ${stdout || 'SUCCESS'}`);
-          resolve();
-        }
+    const tempOutputFile = path.join(os.tmpdir(), `market_data_${Date.now()}.json`);
+
+    try {
+      // Execute Python yfinance batch script writing to OS temp file
+      await new Promise((resolve, reject) => {
+        exec(`${pythonBin} "${pythonScript}" "${startDateStr}" "${endDateStr}" "${tempOutputFile}"`, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`Python script error: ${error.message}`);
+            console.error(`Stderr: ${stderr}`);
+            reject(error);
+          } else {
+            console.log(`Python script output: ${stdout || 'SUCCESS'}`);
+            resolve();
+          }
+        });
       });
-    });
 
-    // Reload the watchlist dynamically from the freshly generated cache file
-    loadWatchlist();
+      if (!fs.existsSync(tempOutputFile)) {
+        throw new Error("Python script finished but output was not generated.");
+      }
 
-    // Re-read and return the newly generated cache data
-    if (fs.existsSync(CACHE_FILE)) {
-      const cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-      return cache.data;
-    } else {
-      throw new Error("Python script finished but cache file was not created.");
+      const rawPayload = fs.readFileSync(tempOutputFile, 'utf8');
+      const payload = JSON.parse(rawPayload);
+
+      // Clean up temp file immediately - no persistent disk dependency
+      try {
+        fs.unlinkSync(tempOutputFile);
+      } catch (_) {}
+
+      // Update in-memory storage
+      inMemoryMarketData = payload;
+      if (payload.watchlist && Array.isArray(payload.watchlist) && payload.watchlist.length > 0) {
+        WATCHLIST.length = 0;
+        WATCHLIST.push(...payload.watchlist);
+      }
+      console.log(`Loaded live market data for ${Object.keys(payload.data).length} symbols into server memory.`);
+
+      return payload.data;
+    } catch (err) {
+      try {
+        if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
+      } catch (_) {}
+      throw err;
     }
   })();
 
