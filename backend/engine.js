@@ -1229,7 +1229,7 @@ async function reEvaluateHoldings() {
   const state = await loadState();
   if (!state.holdings || state.holdings.length === 0) {
     console.log('[reEvaluate] No open holdings to re-evaluate.');
-    return state;
+    return { closedTrades: [], remainingHoldings: [] };
   }
 
   const simDate = state.lastSimulationDate;
@@ -1256,22 +1256,22 @@ async function reEvaluateHoldings() {
     let sellPrice = close;
     let sellReason = '';
 
-    // --- Trailing Stop-Loss Protection ---
+    // --- Trailing Stop-Loss Protection (synced with main engine steps) ---
     const maxProfitGainPercent = ((high - position.buyPrice) / position.buyPrice) * 100;
     if (maxProfitGainPercent >= 6.0) {
-      const trailingLevel = position.buyPrice * 1.025;
+      const trailingLevel = position.buyPrice * 1.000; // Lock in breakeven
       if (trailingLevel > position.stopLoss) {
         position.stopLoss = trailingLevel;
       }
     }
-    if (maxProfitGainPercent >= 9.0) {
-      const trailingLevel = position.buyPrice * 1.060;
+    if (maxProfitGainPercent >= 10.0) {
+      const trailingLevel = position.buyPrice * 1.040; // Lock in +4%
       if (trailingLevel > position.stopLoss) {
         position.stopLoss = trailingLevel;
       }
     }
-    if (maxProfitGainPercent >= 13.0) {
-      const trailingLevel = position.buyPrice * 1.095;
+    if (maxProfitGainPercent >= 15.0) {
+      const trailingLevel = position.buyPrice * 1.090; // Lock in +9%
       if (trailingLevel > position.stopLoss) {
         position.stopLoss = trailingLevel;
       }
