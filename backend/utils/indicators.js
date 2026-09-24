@@ -297,7 +297,11 @@ function checkBreakouts(prices, highs, lows, lookbackPeriod = 20) {
 function calculateADX(highs, lows, closes, period = 14) {
   const len = highs.length;
   const adxValues = Array(len).fill(null);
-  if (len < period * 2 + 1) return adxValues;
+  if (!highs || len < 7) return adxValues;
+
+  // Use adaptive period for shorter histories so valid setups aren't blocked
+  const effPeriod = len < period * 2 + 1 ? Math.max(5, Math.floor((len - 1) / 2)) : period;
+  if (len < effPeriod * 2 + 1) return adxValues;
 
   const trArr = [];
   const dmPlusArr = [];
@@ -321,9 +325,9 @@ function calculateADX(highs, lows, closes, period = 14) {
   }
 
   // Wilder smoothing for TR, +DM, -DM
-  let smoothTR = trArr.slice(0, period).reduce((a, b) => a + b, 0);
-  let smoothDMPlus = dmPlusArr.slice(0, period).reduce((a, b) => a + b, 0);
-  let smoothDMMinus = dmMinusArr.slice(0, period).reduce((a, b) => a + b, 0);
+  let smoothTR = trArr.slice(0, effPeriod).reduce((a, b) => a + b, 0);
+  let smoothDMPlus = dmPlusArr.slice(0, effPeriod).reduce((a, b) => a + b, 0);
+  let smoothDMMinus = dmMinusArr.slice(0, effPeriod).reduce((a, b) => a + b, 0);
 
   const diPlusArr = [];
   const diMinusArr = [];
@@ -332,10 +336,10 @@ function calculateADX(highs, lows, closes, period = 14) {
   diPlusArr.push(smoothTR > 0 ? (smoothDMPlus / smoothTR) * 100 : 0);
   diMinusArr.push(smoothTR > 0 ? (smoothDMMinus / smoothTR) * 100 : 0);
 
-  for (let i = period; i < len; i++) {
-    smoothTR = smoothTR - smoothTR / period + trArr[i];
-    smoothDMPlus = smoothDMPlus - smoothDMPlus / period + dmPlusArr[i];
-    smoothDMMinus = smoothDMMinus - smoothDMMinus / period + dmMinusArr[i];
+  for (let i = effPeriod; i < len; i++) {
+    smoothTR = smoothTR - smoothTR / effPeriod + trArr[i];
+    smoothDMPlus = smoothDMPlus - smoothDMPlus / effPeriod + dmPlusArr[i];
+    smoothDMMinus = smoothDMMinus - smoothDMMinus / effPeriod + dmMinusArr[i];
     diPlusArr.push(smoothTR > 0 ? (smoothDMPlus / smoothTR) * 100 : 0);
     diMinusArr.push(smoothTR > 0 ? (smoothDMMinus / smoothTR) * 100 : 0);
   }
@@ -347,15 +351,15 @@ function calculateADX(highs, lows, closes, period = 14) {
     dxArr.push(diSum > 0 ? (Math.abs(diPlusArr[i] - diMinusArr[i]) / diSum) * 100 : 0);
   }
 
-  // First ADX = average of first 'period' DX values
-  if (dxArr.length < period) return adxValues;
-  let adx = dxArr.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  const startIdx = period * 2 - 1; // offset into original array
+  // First ADX = average of first 'effPeriod' DX values
+  if (dxArr.length < effPeriod) return adxValues;
+  let adx = dxArr.slice(0, effPeriod).reduce((a, b) => a + b, 0) / effPeriod;
+  const startIdx = effPeriod * 2 - 1; // offset into original array
   adxValues[startIdx] = adx;
 
-  for (let i = period; i < dxArr.length; i++) {
-    adx = (adx * (period - 1) + dxArr[i]) / period;
-    adxValues[startIdx + (i - period) + 1] = adx;
+  for (let i = effPeriod; i < dxArr.length; i++) {
+    adx = (adx * (effPeriod - 1) + dxArr[i]) / effPeriod;
+    adxValues[startIdx + (i - effPeriod) + 1] = adx;
   }
 
   return adxValues;
