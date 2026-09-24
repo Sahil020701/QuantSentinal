@@ -12,9 +12,10 @@ const SENTIMENT_META = {
 
 function TxBadge({ type }) {
   const map = {
-    BUY:     { bg: 'rgba(22,163,74,0.12)',  color: 'var(--green)',  label: 'BUY' },
-    SELL:    { bg: 'rgba(220,38,38,0.12)',  color: 'var(--red)',    label: 'SELL' },
-    DEPOSIT: { bg: 'rgba(37,99,235,0.12)', color: 'var(--accent)', label: 'DEP' },
+    BUY:        { bg: 'rgba(22,163,74,0.12)',  color: 'var(--green)',  label: 'BUY' },
+    SELL:       { bg: 'rgba(220,38,38,0.12)',  color: 'var(--red)',    label: 'SELL' },
+    DEPOSIT:    { bg: 'rgba(37,99,235,0.12)', color: 'var(--accent)', label: 'DEP' },
+    ACCUMULATE: { bg: 'rgba(56,189,248,0.18)', color: '#38bdf8',       label: 'PYRAMID' },
   };
   const s = map[type] || map.BUY;
   return (

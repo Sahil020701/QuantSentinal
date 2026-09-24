@@ -147,7 +147,14 @@ export default function DashboardTab({ portfolio }) {
                     <tr key={idx}>
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span className="stock-badge">{position.symbol.replace('.NS', '')}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span className="stock-badge">{position.symbol.replace('.NS', '')}</span>
+                            {position.isAccumulated && (
+                              <span style={{ fontSize: '0.62rem', fontWeight: '700', padding: '1px 5px', borderRadius: '3px', background: 'rgba(56,189,248,0.18)', color: '#38bdf8', letterSpacing: '0.04em' }}>
+                                PYRAMID
+                              </span>
+                            )}
+                          </div>
                           <span className="company-name">{position.name}</span>
                         </div>
                       </td>
