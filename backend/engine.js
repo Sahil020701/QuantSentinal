@@ -406,9 +406,8 @@ function evaluateMarketRegime(simDate, cachedData) {
   const ema50 = ema50Arr[ema50Arr.length - 1];
   const rsi = rsiArr[rsiArr.length - 1] || 50;
 
-  // 1. Confirmed RISK_OFF: Only block new buys when market is clearly broken
-  // Thresholds loosened to avoid false halts on minor pullbacks
-  if ((ema20 && currClose < ema20 * 0.985) || return5d < -0.015 || return10d < -0.025 || rsi < 44) {
+  // 1. Confirmed RISK_OFF: Only block new buys when market is in a genuine multi-week breakdown
+  if ((ema20 && currClose < ema20 * 0.975) || return5d < -0.030 || return10d < -0.045 || (rsi < 36 && currClose < ema50)) {
     return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN', return5d };
   }
 
@@ -436,6 +435,9 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
   }
 
   for (const stock of WATCHLIST) {
+    // Exclude index ETFs: they are macro benchmarks for regime analysis, not individual swing stocks
+    if (stock.sector === 'ETFs') continue;
+
     const existingHolding = currentHoldings.find(h => h.symbol === stock.symbol);
     let isAccumulationCandidate = false;
 
@@ -904,12 +906,12 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         sellReason = isTrailingStop ? 'Trailing Profit Locked' : 'Stop Loss Triggered';
       }
       // 2. Stagnation / Time Stop:
-      // If held for >= 14 trading days, still negative (< -1.0%), and trading below 20 EMA:
-      // Cut dead weight early with a minor scratch instead of letting it rot for 50+ days into an 8% loss!
-      else if (tradingDaysHeld >= 14 && currentGainPct < -1.0 && dayEma20 && close < dayEma20) {
+      // Give healthy consolidation bases room to develop: Require at least 22 trading days (~1 month)
+      // and must be down at least -3.5% AND below 20 EMA by > 1.5%
+      else if (tradingDaysHeld >= 22 && currentGainPct < -3.5 && dayEma20 && close < dayEma20 * 0.985) {
         triggerSell = true;
         sellPrice = close;
-        sellReason = `Stagnation Time-Stop (${tradingDaysHeld}d held, failed follow-through)`;
+        sellReason = `Stagnation Time-Stop (${tradingDaysHeld}d held, ${currentGainPct.toFixed(1)}%)`;
       }
       // 3. Parabolic Climax Blow-Off Exit
       else if (currentGainPct >= 20.0 && stockRsi >= 82 && dayEma20 && close > dayEma20 * 1.12) {
@@ -1035,12 +1037,14 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
 
       // --- BRANCH B: NEW POSITION PURCHASE ---
-      const targetPositionSize = Math.max(8000, totalPortfolioValue * 0.125);
-      // Floor: Must have at least 7% of portfolio in cash to prevent opening tiny scrap positions (like ₹1,700 Eternal)
-      const minAllocationFloor = totalPortfolioValue * 0.07;
+      const availableSlots = Math.max(1, state.config.maxPositions - state.holdings.length);
+      // Smart dynamic position sizing: allocate capital proportionally across remaining slots
+      // Target ~8% to 12% of portfolio per position, ensuring all 12 slots can be filled
+      const targetPositionSize = Math.max(5000, Math.min(totalPortfolioValue * 0.125, (state.cash - minCashReserve) / availableSlots));
+      const minAllocationFloor = Math.min(4500, totalPortfolioValue * 0.04);
       if (state.cash < minAllocationFloor + minCashReserve) return false;
 
-      const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
+      const capitalAllocation = Math.min(targetPositionSize, state.cash - minCashReserve);
       let qty = Math.floor(capitalAllocation / targetStock.price);
 
       // High-priced momentum compounders (e.g. Bosch Ltd., Bajaj Auto):
@@ -1078,11 +1082,16 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     };
 
     // --- Pass 1: Deploy cash to qualified scanner candidates ---
+    let currentHoldingsValue = 0;
+    for (const h of state.holdings) currentHoldingsValue += h.value;
+    const totalPortVal = state.cash + currentHoldingsValue;
+    const cashRatio = totalPortVal > 0 ? (state.cash / totalPortVal) : 1;
+    // When cash is excessively liquid (>25% of portfolio), allow up to 3-4 buys per day to deploy capital
+    const maxBuysToday = cashRatio > 0.35 ? 4 : (cashRatio > 0.20 ? 3 : 2);
     let todayBuysCount = 0;
-    const MAX_BUYS_PER_DAY = 2; // Allow up to 2 buys per day to deploy capital more actively
 
     for (const targetStock of candidates) {
-      if (todayBuysCount >= MAX_BUYS_PER_DAY) break;
+      if (todayBuysCount >= maxBuysToday) break;
 
       const isAccumulation = targetStock.isAccumulation;
 
@@ -1093,12 +1102,13 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
 
       // Broad Market Regime Gate:
-      // In RISK_OFF: Halt new purchases to preserve capital
+      // In RISK_OFF: Only buy elite relative-strength leaders (score 90+ with confirmed 20d momentum or pre-breakout base)
       if (marketRegime.regime === 'RISK_OFF') {
-        continue;
+        const isElite = targetStock.score >= 90 && ((targetStock.rsGain || 0) >= 0.04 || targetStock.strategy === 'PRE_BREAKOUT_BASE');
+        if (!isElite) continue;
       }
-      // In NEUTRAL: Allow good setups (score >= 78 or RS gain >= 4%) — loosened to reduce idle cash
-      if (!isAccumulation && marketRegime.regime === 'NEUTRAL' && targetStock.score < 78 && (targetStock.rsGain || 0) < 0.04) {
+      // In NEUTRAL: Allow good setups (score >= 76)
+      if (!isAccumulation && marketRegime.regime === 'NEUTRAL' && targetStock.score < 76 && (targetStock.rsGain || 0) < 0.02) {
         continue;
       }
 
@@ -1148,7 +1158,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         if (executeBuy(targetStock)) {
           todayBuysCount++;
         }
-        if (todayBuysCount >= MAX_BUYS_PER_DAY) break;
+        if (todayBuysCount >= maxBuysToday) break;
       }
     }
 
@@ -1424,10 +1434,10 @@ async function reEvaluateHoldings() {
       sellReason = isTrailingStop ? 'Trailing Profit Locked' : 'Stop Loss Triggered';
     }
     // Stagnation / Time Stop
-    else if (tradingDaysHeld >= 14 && currentGainPct < -1.0 && dayEma20 && close < dayEma20) {
+    else if (tradingDaysHeld >= 22 && currentGainPct < -3.5 && dayEma20 && close < dayEma20 * 0.985) {
       triggerSell = true;
       sellPrice = close;
-      sellReason = `Stagnation Time-Stop (${tradingDaysHeld}d held, failed follow-through)`;
+      sellReason = `Stagnation Time-Stop (${tradingDaysHeld}d held, ${currentGainPct.toFixed(1)}%)`;
     }
     // Parabolic Climax Blow-Off Exit
     else if (currentGainPct >= 20.0 && stockRsi >= 82 && dayEma20 && close > dayEma20 * 1.12) {
@@ -1493,22 +1503,25 @@ async function deployIdleCash(simDate) {
 
   const { candidates, marketRegime } = scanMarketCandidates(targetDate, cachedData, state.holdings, state.config);
 
-  if (marketRegime && marketRegime.regime === 'RISK_OFF') {
-    return state; // Halt cash deployment in market correction
-  }
-
+  const maxDeployBuys = 4;
   let newBuysCount = 0;
   for (const targetStock of candidates) {
+    if (newBuysCount >= maxDeployBuys) break;
+    if (targetStock.sector === 'ETFs') continue;
+
     const isAccumulation = targetStock.isAccumulation;
 
-    if (!isAccumulation && marketRegime && marketRegime.regime === 'NEUTRAL' && (targetStock.score < 90 || (targetStock.rsGain || 0) < 0.08)) {
+    if (marketRegime && marketRegime.regime === 'RISK_OFF') {
+      const isElite = targetStock.score >= 90 && ((targetStock.rsGain || 0) >= 0.04 || targetStock.strategy === 'PRE_BREAKOUT_BASE');
+      if (!isElite) continue;
+    } else if (!isAccumulation && marketRegime && marketRegime.regime === 'NEUTRAL' && targetStock.score < 76 && (targetStock.rsGain || 0) < 0.02) {
       continue;
     }
 
-    // Sector diversification check: maximum 2 positions per sector (except ETFs)
+    // Sector diversification check: maximum 3 positions per sector (except ETFs)
     if (!isAccumulation) {
       const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 2) {
+      if (currentSectorCount >= 3) {
         continue;
       }
     }
@@ -1566,12 +1579,12 @@ async function deployIdleCash(simDate) {
 
       newBuysCount++;
       console.log(`[deployIdleCash] [ACCUMULATED] +${qty} shares of ${targetStock.symbol} @ ₹${targetStock.price}. Blended Entry: ₹${blendedBuyPrice.toFixed(2)}, Guaranteed SL: ₹${newStopLoss.toFixed(2)}`);
-      break;
+      continue;
     }
 
     // --- NEW POSITION BRANCH ---
-    const targetPositionSize = Math.max(8000, totalPortfolioValue * 0.125);
-    const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
+    const targetPositionSize = Math.max(5000, Math.min(totalPortfolioValue * 0.125, (state.cash - minCashReserve) / availableSlots));
+    const capitalAllocation = Math.min(targetPositionSize, state.cash - minCashReserve);
     let qty = Math.floor(capitalAllocation / targetStock.price);
 
     // High-priced momentum compounders:
@@ -1605,7 +1618,7 @@ async function deployIdleCash(simDate) {
       state.holdings.push(newHolding);
       newBuysCount++;
       console.log(`[deployIdleCash] BOUGHT ${qty} shares of ${targetStock.symbol} @ ₹${targetStock.price}. Target: ₹${targetPrice.toFixed(2)}, SL: ₹${stopLoss.toFixed(2)}`);
-      break;
+      if (newBuysCount >= maxDeployBuys) break;
     }
   }
 

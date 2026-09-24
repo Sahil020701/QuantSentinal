@@ -274,8 +274,19 @@ def fetch_watchlist(output_file):
         if not fetched:
             print(f"Could not fetch {index_config['name']} from any URL.", file=sys.stderr)
 
+    USER_MANDATORY_STOCKS = [
+        {"symbol": "SYRMA.NS", "name": "Syrma SGS Technology Ltd.", "sector": "Capital Goods"},
+        {"symbol": "PTCIL.NS", "name": "PTC Industries Ltd.", "sector": "Capital Goods"},
+        {"symbol": "TMPV.NS", "name": "Tata Motors Passenger Vehicles Ltd.", "sector": "Automobile and Auto Components"},
+        {"symbol": "TMCV.NS", "name": "Tata Motors Commercial Vehicles Ltd.", "sector": "Capital Goods"},
+    ]
+    for s in USER_MANDATORY_STOCKS:
+        if s["symbol"] not in seen_symbols:
+            seen_symbols.add(s["symbol"])
+            combined_watchlist.append(s)
+
     if any_live_download:
-        print(f"Live universe compiled: {len(combined_watchlist)} total assets (Nifty 200 + Midcap 100 + Smallcap 100).", file=sys.stderr)
+        print(f"Live universe compiled: {len(combined_watchlist)} total assets (Nifty 200 + Midcap 100 + Smallcap 100 + Priority stocks).", file=sys.stderr)
         return combined_watchlist
 
     # All live downloads failed — fall back to cached/built-in watchlist (CORE_BUILTIN_WATCHLIST used here only)
