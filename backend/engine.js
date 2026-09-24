@@ -583,10 +583,10 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       let score = baseScore;
 
       // 0. Relative Strength (RS) Momentum Outperformance Bonus
-      if (stockReturn30d >= 0.15) score += 8;      // Elite market leader (+15%+ in 30d)
-      else if (stockReturn30d >= 0.08) score += 5; // Strong outperformer
-      else if (stockReturn30d >= 0.03) score += 2;
-      else if (stockReturn30d < -0.04) score -= 5;
+      if (stockReturn20d >= 0.12) score += 8;      // Elite market leader (+12%+ in 20d)
+      else if (stockReturn20d >= 0.06) score += 5; // Strong outperformer
+      else if (stockReturn20d >= 0.02) score += 2;
+      else if (stockReturn20d < -0.04) score -= 5;
 
       // 1. Institutional Volume Confirmation
       if (currentRvol >= 2.0) score += 6;
