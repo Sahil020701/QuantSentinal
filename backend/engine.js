@@ -253,7 +253,7 @@ async function updateCache(endDateStr, forceRefresh = false) {
     
     // Dynamically calculate start date (120 days lookback to ensure 50+ trading bars for technical indicators)
     const endD = new Date(endDateStr);
-    const startD = new Date(endD.getTime() - (120 * 24 * 60 * 60 * 1000));
+    const startD = new Date(endD.getTime() - (365 * 24 * 60 * 60 * 1000));
     const startDateStr = formatUTCDate(startD);
     // Determine Python executable (prefer isolated backend venv if available)
     const venvUnix = path.join(__dirname, 'venv', 'bin', 'python3');
@@ -651,9 +651,9 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       // Clamp score between 50 and 100
       score = Math.max(50, Math.min(100, Math.round(score)));
 
-      // Quality Threshold: 78 in normal markets (requires genuine confluence to buy),
-      // 85 in RISK_OFF (only highest-conviction institutional setups survive).
-      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 85 : 78;
+      // Quality Threshold: 75 in normal markets (enables early July trend entries),
+      // 82 in RISK_OFF (only high-conviction institutional setups survive).
+      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 82 : 75;
       if (score >= minScoreThreshold) {
         candidates.push({
           symbol: stock.symbol,

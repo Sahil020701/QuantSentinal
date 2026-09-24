@@ -8,7 +8,16 @@ function calculateSMA(prices, period) {
   if (!prices || prices.length === 0) return [];
   const smaValues = Array(prices.length).fill(null);
   
-  if (prices.length < period) return smaValues;
+  if (prices.length < period) {
+    if (prices.length < 10) return smaValues;
+    // Adaptive seed for early simulation dates (e.g. July 1)
+    let sum = 0;
+    for (let i = 0; i < prices.length; i++) {
+      sum += prices[i];
+      smaValues[i] = sum / (i + 1);
+    }
+    return smaValues;
+  }
   
   let sum = 0;
   // First sum
@@ -35,7 +44,19 @@ function calculateEMA(prices, period) {
   if (!prices || prices.length === 0) return [];
   const emaValues = Array(prices.length).fill(null);
   
-  if (prices.length < period) return emaValues;
+  if (prices.length < period) {
+    if (prices.length < 10) return emaValues;
+    // Adaptive seed: calculates EMA using available history so EMA50 is not null in early simulation months
+    let sum = 0;
+    for (let i = 0; i < Math.min(10, prices.length); i++) sum += prices[i];
+    let currentEma = sum / Math.min(10, prices.length);
+    const multiplier = 2 / (period + 1);
+    for (let i = 0; i < prices.length; i++) {
+      currentEma = (prices[i] - currentEma) * multiplier + currentEma;
+      emaValues[i] = currentEma;
+    }
+    return emaValues;
+  }
   
   // Start with SMA for the first value
   let sum = 0;
