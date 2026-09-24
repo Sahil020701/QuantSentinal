@@ -43,7 +43,10 @@ ETFS = [
     {"symbol": "MON100.NS", "name": "Nasdaq 100 ETF", "sector": "ETFs"}
 ]
 
+# Core stocks always included regardless of whether live CSV download succeeds.
+# These guarantee coverage of high-momentum stocks that may not always appear in index CSVs.
 CORE_BUILTIN_WATCHLIST = [
+    # ── Nifty 50 Heavyweights ──
     {"symbol": "RELIANCE.NS", "name": "Reliance Industries Ltd.", "sector": "Oil Gas & Consumable Fuels"},
     {"symbol": "TCS.NS", "name": "Tata Consultancy Services Ltd.", "sector": "Information Technology"},
     {"symbol": "HDFCBANK.NS", "name": "HDFC Bank Ltd.", "sector": "Financial Services"},
@@ -74,8 +77,7 @@ CORE_BUILTIN_WATCHLIST = [
     {"symbol": "TATASTEEL.NS", "name": "Tata Steel Ltd.", "sector": "Metals & Mining"},
     {"symbol": "ULTRACEMCO.NS", "name": "UltraTech Cement Ltd.", "sector": "Construction Materials"},
     {"symbol": "ASIANPAINT.NS", "name": "Asian Paints Ltd.", "sector": "Consumer Durables"},
-    # ── Stocks added to guarantee coverage (may fall out of live NSE Nifty 200 CSV) ──
-    {"symbol": "TATAMOTORS.NS", "name": "Tata Motors Ltd.", "sector": "Automobile and Auto Components"},
+    # ── User-specified high-momentum stocks (always scan regardless of index membership) ──
     {"symbol": "BAJAJ-AUTO.NS", "name": "Bajaj Auto Ltd.", "sector": "Automobile and Auto Components"},
     {"symbol": "MAXHEALTH.NS", "name": "Max Healthcare Institute Ltd.", "sector": "Healthcare"},
     {"symbol": "BOSCHLTD.NS", "name": "Bosch Ltd.", "sector": "Capital Goods"},
@@ -86,6 +88,99 @@ CORE_BUILTIN_WATCHLIST = [
     {"symbol": "MOTHERSON.NS", "name": "Samvardhana Motherson International Ltd.", "sector": "Automobile and Auto Components"},
     {"symbol": "SYRMA.NS", "name": "Syrma SGS Technology Ltd.", "sector": "Capital Goods"},
     {"symbol": "PTCIL.NS", "name": "PTC Industries Ltd.", "sector": "Capital Goods"},
+    {"symbol": "COFORGE.NS", "name": "Coforge Ltd.", "sector": "Information Technology"},
+    {"symbol": "ETERNAL.NS", "name": "Eternal Ltd.", "sector": "Consumer Services"},
+    {"symbol": "SWIGGY.NS", "name": "Swiggy Ltd.", "sector": "Consumer Services"},
+    {"symbol": "LENSKART.NS", "name": "Lenskart Solutions Ltd.", "sector": "Consumer Services"},
+    {"symbol": "ABB.NS", "name": "ABB India Ltd.", "sector": "Capital Goods"},
+    {"symbol": "EICHERMOT.NS", "name": "Eicher Motors Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "MAZDOCK.NS", "name": "Mazagoan Dock Shipbuilders Ltd.", "sector": "Capital Goods"},
+    {"symbol": "COCHINSHIP.NS", "name": "Cochin Shipyard Ltd.", "sector": "Capital Goods"},
+    {"symbol": "UNITDSPR.NS", "name": "United Spirits Ltd.", "sector": "Fast Moving Consumer Goods"},
+    # ── Key Midcap momentum stocks ──
+    {"symbol": "PERSISTENT.NS", "name": "Persistent Systems Ltd.", "sector": "Information Technology"},
+    {"symbol": "LTIM.NS", "name": "LTIMindtree Ltd.", "sector": "Information Technology"},
+    {"symbol": "MPHASIS.NS", "name": "Mphasis Ltd.", "sector": "Information Technology"},
+    {"symbol": "OFSS.NS", "name": "Oracle Financial Services Software Ltd.", "sector": "Information Technology"},
+    {"symbol": "KALYANKJIL.NS", "name": "Kalyan Jewellers India Ltd.", "sector": "Consumer Durables"},
+    {"symbol": "KPITTECH.NS", "name": "KPIT Technologies Ltd.", "sector": "Information Technology"},
+    {"symbol": "TATAELXSI.NS", "name": "Tata Elxsi Ltd.", "sector": "Information Technology"},
+    {"symbol": "LAURUSLABS.NS", "name": "Laurus Labs Ltd.", "sector": "Healthcare"},
+    {"symbol": "APLLTD.NS", "name": "Alkem Laboratories Ltd.", "sector": "Healthcare"},
+    {"symbol": "CIPLA.NS", "name": "Cipla Ltd.", "sector": "Healthcare"},
+    {"symbol": "DRREDDY.NS", "name": "Dr. Reddy's Laboratories Ltd.", "sector": "Healthcare"},
+    {"symbol": "ZYDUSLIFE.NS", "name": "Zydus Lifesciences Ltd.", "sector": "Healthcare"},
+    {"symbol": "TORNTPHARM.NS", "name": "Torrent Pharmaceuticals Ltd.", "sector": "Healthcare"},
+    {"symbol": "POLYCAB.NS", "name": "Polycab India Ltd.", "sector": "Capital Goods"},
+    {"symbol": "HAVELLS.NS", "name": "Havells India Ltd.", "sector": "Capital Goods"},
+    {"symbol": "VOLTAS.NS", "name": "Voltas Ltd.", "sector": "Consumer Durables"},
+    {"symbol": "BLUEDART.NS", "name": "Blue Dart Express Ltd.", "sector": "Services"},
+    {"symbol": "INDIAMART.NS", "name": "IndiaMART InterMESH Ltd.", "sector": "Information Technology"},
+    {"symbol": "NAUKRI.NS", "name": "Info Edge (India) Ltd.", "sector": "Information Technology"},
+    {"symbol": "ZOMATO.NS", "name": "Zomato Ltd.", "sector": "Consumer Services"},
+    {"symbol": "PAYTM.NS", "name": "One 97 Communications Ltd.", "sector": "Financial Services"},
+    {"symbol": "NYKAA.NS", "name": "FSN E-Commerce Ventures Ltd.", "sector": "Consumer Services"},
+    {"symbol": "DELHIVERY.NS", "name": "Delhivery Ltd.", "sector": "Services"},
+    {"symbol": "ASTRAL.NS", "name": "Astral Ltd.", "sector": "Capital Goods"},
+    {"symbol": "SUPREMEIND.NS", "name": "Supreme Industries Ltd.", "sector": "Capital Goods"},
+    {"symbol": "APLAPOLLO.NS", "name": "APL Apollo Tubes Ltd.", "sector": "Metals & Mining"},
+    {"symbol": "GODREJPROP.NS", "name": "Godrej Properties Ltd.", "sector": "Realty"},
+    {"symbol": "PRESTIGE.NS", "name": "Prestige Estates Projects Ltd.", "sector": "Realty"},
+    {"symbol": "OBEROIRLTY.NS", "name": "Oberoi Realty Ltd.", "sector": "Realty"},
+    {"symbol": "BRIGADE.NS", "name": "Brigade Enterprises Ltd.", "sector": "Realty"},
+    {"symbol": "CONCOR.NS", "name": "Container Corporation of India Ltd.", "sector": "Services"},
+    {"symbol": "IRCTC.NS", "name": "Indian Railway Catering & Tourism Corp.", "sector": "Services"},
+    {"symbol": "IRFC.NS", "name": "Indian Railway Finance Corporation Ltd.", "sector": "Financial Services"},
+    {"symbol": "RVNL.NS", "name": "Rail Vikas Nigam Ltd.", "sector": "Construction"},
+    {"symbol": "TIINDIA.NS", "name": "Tube Investments of India Ltd.", "sector": "Capital Goods"},
+    {"symbol": "SCHAEFFLER.NS", "name": "Schaeffler India Ltd.", "sector": "Capital Goods"},
+    {"symbol": "CGPOWER.NS", "name": "CG Power and Industrial Solutions Ltd.", "sector": "Capital Goods"},
+    {"symbol": "BHEL.NS", "name": "Bharat Heavy Electricals Ltd.", "sector": "Capital Goods"},
+    {"symbol": "BEL.NS", "name": "Bharat Electronics Ltd.", "sector": "Capital Goods"},
+    {"symbol": "HAL.NS", "name": "Hindustan Aeronautics Ltd.", "sector": "Capital Goods"},
+    {"symbol": "SAIL.NS", "name": "Steel Authority of India Ltd.", "sector": "Metals & Mining"},
+    {"symbol": "NMDC.NS", "name": "NMDC Ltd.", "sector": "Metals & Mining"},
+    {"symbol": "HINDALCO.NS", "name": "Hindalco Industries Ltd.", "sector": "Metals & Mining"},
+    {"symbol": "VEDL.NS", "name": "Vedanta Ltd.", "sector": "Metals & Mining"},
+    {"symbol": "JSWSTEEL.NS", "name": "JSW Steel Ltd.", "sector": "Metals & Mining"},
+    {"symbol": "BANKBARODA.NS", "name": "Bank of Baroda", "sector": "Financial Services"},
+    {"symbol": "PNB.NS", "name": "Punjab National Bank", "sector": "Financial Services"},
+    {"symbol": "CANBK.NS", "name": "Canara Bank", "sector": "Financial Services"},
+    {"symbol": "FEDERALBNK.NS", "name": "The Federal Bank Ltd.", "sector": "Financial Services"},
+    {"symbol": "INDUSINDBK.NS", "name": "IndusInd Bank Ltd.", "sector": "Financial Services"},
+    {"symbol": "CHOLAFIN.NS", "name": "Cholamandalam Investment and Finance Co.", "sector": "Financial Services"},
+    {"symbol": "MUTHOOTFIN.NS", "name": "Muthoot Finance Ltd.", "sector": "Financial Services"},
+    {"symbol": "MANAPPURAM.NS", "name": "Manappuram Finance Ltd.", "sector": "Financial Services"},
+    {"symbol": "SBICARD.NS", "name": "SBI Cards and Payment Services Ltd.", "sector": "Financial Services"},
+    {"symbol": "HDFCAMC.NS", "name": "HDFC Asset Management Co. Ltd.", "sector": "Financial Services"},
+    {"symbol": "NAUKRI.NS", "name": "Info Edge (India) Ltd.", "sector": "Information Technology"},
+    {"symbol": "MARICO.NS", "name": "Marico Ltd.", "sector": "Fast Moving Consumer Goods"},
+    {"symbol": "COLPAL.NS", "name": "Colgate-Palmolive (India) Ltd.", "sector": "Fast Moving Consumer Goods"},
+    {"symbol": "DABUR.NS", "name": "Dabur India Ltd.", "sector": "Fast Moving Consumer Goods"},
+    {"symbol": "TATACONSUM.NS", "name": "Tata Consumer Products Ltd.", "sector": "Fast Moving Consumer Goods"},
+    {"symbol": "NESTLEIND.NS", "name": "Nestle India Ltd.", "sector": "Fast Moving Consumer Goods"},
+    {"symbol": "BRITANNIA.NS", "name": "Britannia Industries Ltd.", "sector": "Fast Moving Consumer Goods"},
+    {"symbol": "JUBLFOOD.NS", "name": "Jubilant FoodWorks Ltd.", "sector": "Consumer Services"},
+    {"symbol": "M&M.NS", "name": "Mahindra & Mahindra Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "HEROMOTOCO.NS", "name": "Hero MotoCorp Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "ASHOKLEY.NS", "name": "Ashok Leyland Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "BALKRISIND.NS", "name": "Balkrishna Industries Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "MRF.NS", "name": "MRF Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "APOLLOTYRE.NS", "name": "Apollo Tyres Ltd.", "sector": "Automobile and Auto Components"},
+    {"symbol": "GAIL.NS", "name": "GAIL (India) Ltd.", "sector": "Oil Gas & Consumable Fuels"},
+    {"symbol": "IOC.NS", "name": "Indian Oil Corporation Ltd.", "sector": "Oil Gas & Consumable Fuels"},
+    {"symbol": "BPCL.NS", "name": "Bharat Petroleum Corporation Ltd.", "sector": "Oil Gas & Consumable Fuels"},
+    {"symbol": "TORNTPOWER.NS", "name": "Torrent Power Ltd.", "sector": "Power"},
+    {"symbol": "TATAPOWER.NS", "name": "Tata Power Company Ltd.", "sector": "Power"},
+    {"symbol": "CESC.NS", "name": "CESC Ltd.", "sector": "Power"},
+    {"symbol": "ADANIGREEN.NS", "name": "Adani Green Energy Ltd.", "sector": "Power"},
+    {"symbol": "ABCAPITAL.NS", "name": "Aditya Birla Capital Ltd.", "sector": "Financial Services"},
+    {"symbol": "MFSL.NS", "name": "Max Financial Services Ltd.", "sector": "Financial Services"},
+    {"symbol": "PIIND.NS", "name": "PI Industries Ltd.", "sector": "Chemicals"},
+    {"symbol": "SRF.NS", "name": "SRF Ltd.", "sector": "Chemicals"},
+    {"symbol": "DEEPAKNTR.NS", "name": "Deepak Nitrite Ltd.", "sector": "Chemicals"},
+    {"symbol": "ATUL.NS", "name": "Atul Ltd.", "sector": "Chemicals"},
+    {"symbol": "NAVINFLUOR.NS", "name": "Navin Fluorine International Ltd.", "sector": "Chemicals"},
 ]
 
 def load_fallback_watchlist(output_file):
@@ -112,11 +207,31 @@ def load_fallback_watchlist(output_file):
     return ETFS + CORE_BUILTIN_WATCHLIST
 
 def fetch_watchlist(output_file):
-    urls = [
-        'https://archives.nseindia.com/content/indices/ind_nifty200list.csv',
-        'https://niftyindices.com/IndexConstituent/ind_nifty200list.csv'
+    # Fetch from Nifty 200, Nifty Midcap 100, and Nifty Smallcap 100
+    index_urls = [
+        {
+            "name": "Nifty 200",
+            "urls": [
+                'https://archives.nseindia.com/content/indices/ind_nifty200list.csv',
+                'https://niftyindices.com/IndexConstituent/ind_nifty200list.csv'
+            ]
+        },
+        {
+            "name": "Nifty Midcap 100",
+            "urls": [
+                'https://archives.nseindia.com/content/indices/ind_niftymidcap100list.csv',
+                'https://niftyindices.com/IndexConstituent/ind_niftymidcap100list.csv'
+            ]
+        },
+        {
+            "name": "Nifty Smallcap 100",
+            "urls": [
+                'https://archives.nseindia.com/content/indices/ind_niftysmallcap100list.csv',
+                'https://niftyindices.com/IndexConstituent/ind_niftysmallcap100list.csv'
+            ]
+        }
     ]
-    
+
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -124,34 +239,47 @@ def fetch_watchlist(output_file):
         'Referer': 'https://www.nseindia.com/'
     }
 
-    for url in urls:
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=8) as response:
-                content = response.read()
-                df = pd.read_csv(io.BytesIO(content))
-                if 'Symbol' in df.columns and ('Industry' in df.columns or 'Company Name' in df.columns):
-                    industry_col = 'Industry' if 'Industry' in df.columns else df.columns[1]
-                    name_col = 'Company Name' if 'Company Name' in df.columns else 'Symbol'
-                    selected_df = df.groupby(industry_col).head(20)
+    # Start watchlist with ETFs
+    combined_watchlist = list(ETFS)
+    seen_symbols = {e["symbol"] for e in ETFS}
+    any_live_download = False
 
-                    watchlist = []
-                    for etf in ETFS:
-                        watchlist.append(etf)
+    for index_config in index_urls:
+        fetched = False
+        for url in index_config["urls"]:
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    content = response.read()
+                    df = pd.read_csv(io.BytesIO(content))
+                    if 'Symbol' in df.columns and ('Industry' in df.columns or 'Company Name' in df.columns):
+                        industry_col = 'Industry' if 'Industry' in df.columns else df.columns[1]
+                        name_col = 'Company Name' if 'Company Name' in df.columns else 'Symbol'
 
-                    for _, row in selected_df.iterrows():
-                        sym = str(row['Symbol']).strip() + '.NS'
-                        watchlist.append({
-                            "symbol": sym,
-                            "name": str(row[name_col]).strip(),
-                            "sector": str(row[industry_col]).strip()
-                        })
-                    print(f"Successfully downloaded live Nifty 200 list from {url} ({len(watchlist)} assets).", file=sys.stderr)
-                    return watchlist
-        except Exception as e:
-            print(f"Note: Live fetch from {url} returned: {e}", file=sys.stderr)
+                        for _, row in df.iterrows():
+                            sym = str(row['Symbol']).strip() + '.NS'
+                            if sym not in seen_symbols:
+                                seen_symbols.add(sym)
+                                combined_watchlist.append({
+                                    "symbol": sym,
+                                    "name": str(row[name_col]).strip(),
+                                    "sector": str(row[industry_col]).strip()
+                                })
+                        print(f"Downloaded {index_config['name']} from {url} ({len(df)} stocks).", file=sys.stderr)
+                        fetched = True
+                        any_live_download = True
+                        break
+            except Exception as e:
+                print(f"Note: Live fetch from {url} returned: {e}", file=sys.stderr)
+        if not fetched:
+            print(f"Could not fetch {index_config['name']} from any URL.", file=sys.stderr)
 
-    print("Falling back to cached/built-in Nifty 200 watchlist.", file=sys.stderr)
+    if any_live_download:
+        print(f"Live universe compiled: {len(combined_watchlist)} total assets (Nifty 200 + Midcap 100 + Smallcap 100).", file=sys.stderr)
+        return combined_watchlist
+
+    # All live downloads failed — fall back to cached/built-in watchlist (CORE_BUILTIN_WATCHLIST used here only)
+    print("All live downloads failed. Falling back to cached/built-in watchlist.", file=sys.stderr)
     return load_fallback_watchlist(output_file)
 
 def main():

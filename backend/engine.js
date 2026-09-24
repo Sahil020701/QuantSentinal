@@ -98,10 +98,10 @@ const INITIAL_STATE = {
   config: {
     targetProfitPercent: 0.25, // +25.0% baseline with dynamic uncapped trailing runner
     stopLossPercent: 0.075,    // -7.5% closing-basis wiggle room (eliminates intraday noise stopouts)
-    maxPositions: 8,           // 8 concentrated elite positions (~12% capital allocation each)
+    maxPositions: 12,          // 12 positions to deploy capital more aggressively (~8% each)
     aggressiveness: 'aggressive', // conservative, moderate, aggressive, hyper
     rotationEnabled: false,     // Disabled to eliminate whipsaw churn on normal pullbacks
-    rotationMinCandidateScore: 92, // High bar if rotation is manually turned on
+    rotationMinCandidateScore: 90, // High bar if rotation is manually turned on
     rotationMaxUnderperformerProfit: -4.5 // Only rotate if trade is broken beyond -4.5%
   }
 };
@@ -406,8 +406,9 @@ function evaluateMarketRegime(simDate, cachedData) {
   const ema50 = ema50Arr[ema50Arr.length - 1];
   const rsi = rsiArr[rsiArr.length - 1] || 50;
 
-  // 1. Confirmed RISK_OFF: Index below 20 EMA, or rolling multi-day drops, or weak momentum
-  if ((ema20 && currClose < ema20) || return5d < -0.008 || return10d < -0.012 || rsi < 48) {
+  // 1. Confirmed RISK_OFF: Only block new buys when market is clearly broken
+  // Thresholds loosened to avoid false halts on minor pullbacks
+  if ((ema20 && currClose < ema20 * 0.985) || return5d < -0.015 || return10d < -0.025 || rsi < 44) {
     return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN', return5d };
   }
 
@@ -453,8 +454,8 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       isAccumulationCandidate = true;
     }
 
-    // Sector limit: max 2 positions per sector for new entries (except ETFs)
-    if (!isAccumulationCandidate && stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= 2) {
+    // Sector limit: max 3 positions per sector for new entries (except ETFs)
+    if (!isAccumulationCandidate && stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= 3) {
       continue;
     }
 
@@ -538,12 +539,12 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       breakout20.isBullishBreakout &&
       currentClose > ema20 &&
       (ema20 > ema50 || currentRvol >= 1.35) &&
-      currentRvol >= 1.15 &&
-      rsiVal >= 50 &&
-      rsiVal <= 72 &&
+      currentRvol >= 1.10 &&
+      rsiVal >= 48 &&
+      rsiVal <= 75 &&
       currentClose >= currentOpen &&
-      clv >= 0.55 &&
-      currentClose <= ema20 * 1.065
+      clv >= 0.50 &&
+      currentClose <= ema20 * 1.08
     ) {
       buySignal = true;
       strategyName = 'MOMENTUM_BREAKOUT';
@@ -553,15 +554,15 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
 
     // --- Institutional Strategy 2: Support Pullback / 20 EMA Bounce ---
     else if (
-      currentClose >= ema20 * 0.985 &&
-      currentClose <= ema20 * 1.035 &&
+      currentClose >= ema20 * 0.980 &&
+      currentClose <= ema20 * 1.040 &&
       currentClose > currentOpen &&
       currentClose > prevClose &&
-      currentRvol >= 0.95 && // Require legitimate volume, reject low-volume traps
-      clv >= 0.55 &&
-      rsiVal >= 46 &&
-      rsiVal <= 65 &&
-      (ema50 ? ema20 >= ema50 : true)
+      currentRvol >= 0.85 && // Allow slightly lower volume — institutions sometimes accumulate quietly
+      clv >= 0.50 &&
+      rsiVal >= 44 &&
+      rsiVal <= 72 &&
+      (ema50 ? ema20 >= ema50 * 0.97 : true)
     ) {
       buySignal = true;
       strategyName = 'SUPPORT_PULLBACK';
@@ -656,8 +657,8 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       }
 
       const minScoreThreshold = isAccumulationCandidate 
-        ? 85 
-        : (marketRegime.regime === 'RISK_OFF' ? 90 : (marketRegime.regime === 'NEUTRAL' ? 84 : 78));
+        ? 83 
+        : (marketRegime.regime === 'RISK_OFF' ? 88 : (marketRegime.regime === 'NEUTRAL' ? 80 : 72));
 
       if (score >= minScoreThreshold) {
         candidates.push({
@@ -789,34 +790,34 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         stockRsi = rsiArr[rsiArr.length - 1] || 50;
       }
 
-      // Dynamic Profit Protection (Uncapped Upside):
-      // Step 1: At +5.0% peak gain, move stop loss to Breakeven (+0.5% buffer)
-      if (maxProfitGainPercent >= 5.0) {
+      // Dynamic Profit Protection (Uncapped Upside — let winners RUN like Coforge +20%):
+      // Step 1: At +10% peak gain, move stop loss to Breakeven (+0.5% buffer)
+      if (maxProfitGainPercent >= 10.0) {
         const beLevel = position.buyPrice * 1.005;
         if (beLevel > position.stopLoss) position.stopLoss = beLevel;
       }
 
-      // Step 2: At +8.0% gain, lock in +5.0% minimum profit
-      if (maxProfitGainPercent >= 8.0) {
-        const lockProfit = position.buyPrice * 1.050;
+      // Step 2: At +15% gain, lock in +8% minimum profit
+      if (maxProfitGainPercent >= 15.0) {
+        const lockProfit = position.buyPrice * 1.080;
         if (lockProfit > position.stopLoss) position.stopLoss = lockProfit;
       }
 
-      // Step 3: At +10.5% gain, lock in +8.0% minimum profit
-      if (maxProfitGainPercent >= 10.5) {
-        const lockProfit2 = position.buyPrice * 1.080;
+      // Step 3: At +20% gain, lock in +13% minimum profit
+      if (maxProfitGainPercent >= 20.0) {
+        const lockProfit2 = position.buyPrice * 1.130;
         if (lockProfit2 > position.stopLoss) position.stopLoss = lockProfit2;
       }
 
-      // Step 4: At +13.0% gain, lock in +10.5% minimum profit
-      if (maxProfitGainPercent >= 13.0) {
-        const lockProfit3 = position.buyPrice * 1.105;
+      // Step 4: At +25% gain, lock in +18% minimum profit
+      if (maxProfitGainPercent >= 25.0) {
+        const lockProfit3 = position.buyPrice * 1.180;
         if (lockProfit3 > position.stopLoss) position.stopLoss = lockProfit3;
       }
 
-      // Step 5: At +15.0% gain, activate RUNNER MODE (trail 20 EMA or lock +12.5%)
-      if (maxProfitGainPercent >= 15.0 && dayEma20) {
-        const runnerTrail = Math.max(position.buyPrice * 1.125, dayEma20 * 0.985);
+      // Step 5: At +30% gain, activate RUNNER MODE (trail 20 EMA closely or lock +23%)
+      if (maxProfitGainPercent >= 30.0 && dayEma20) {
+        const runnerTrail = Math.max(position.buyPrice * 1.230, dayEma20 * 0.985);
         if (runnerTrail > position.stopLoss) position.stopLoss = runnerTrail;
       }
 
@@ -1009,26 +1010,26 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
     // --- Pass 1: Deploy cash to qualified scanner candidates ---
     let todayBuysCount = 0;
-    const MAX_BUYS_PER_DAY = 1; // Stagger 1 buy per day to focus strictly on the #1 ranked market leader
+    const MAX_BUYS_PER_DAY = 2; // Allow up to 2 buys per day to deploy capital more actively
 
     for (const targetStock of candidates) {
       if (todayBuysCount >= MAX_BUYS_PER_DAY) break;
 
       const isAccumulation = targetStock.isAccumulation;
 
-      // Sector diversification: max 2 positions per sector in an 8-position portfolio (skip check if accumulating)
+      // Sector diversification: max 3 positions per sector (skip check if accumulating)
       if (!isAccumulation) {
         const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-        if (targetStock.sector !== 'ETFs' && currentSectorCount >= 2) continue;
+        if (targetStock.sector !== 'ETFs' && currentSectorCount >= 3) continue;
       }
 
       // Broad Market Regime Gate:
-      // In RISK_OFF: 100% halt on new purchases to preserve capital
+      // In RISK_OFF: Halt new purchases to preserve capital
       if (marketRegime.regime === 'RISK_OFF') {
         continue;
       }
-      // In NEUTRAL (consolidating / unconfirmed market): only allow elite setups (score >= 90 & RS gain >= 8%)
-      if (!isAccumulation && marketRegime.regime === 'NEUTRAL' && (targetStock.score < 90 || (targetStock.rsGain || 0) < 0.08)) {
+      // In NEUTRAL: Allow good setups (score >= 78 or RS gain >= 4%) — loosened to reduce idle cash
+      if (!isAccumulation && marketRegime.regime === 'NEUTRAL' && targetStock.score < 78 && (targetStock.rsGain || 0) < 0.04) {
         continue;
       }
 
