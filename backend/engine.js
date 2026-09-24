@@ -96,9 +96,9 @@ const INITIAL_STATE = {
     }
   ],
   config: {
-    targetProfitPercent: 0.15, // +15.0% realistic high-expectancy swing target
-    stopLossPercent: 0.065,    // -6.5% disciplined risk cutoff on closing basis
-    maxPositions: 12,          // 12 focused high-conviction positions (~8-10% capital each)
+    targetProfitPercent: 0.25, // +25.0% baseline with dynamic uncapped trailing runner
+    stopLossPercent: 0.075,    // -7.5% closing-basis wiggle room (eliminates intraday noise stopouts)
+    maxPositions: 8,           // 8 concentrated elite positions (~12% capital allocation each)
     aggressiveness: 'aggressive', // conservative, moderate, aggressive, hyper
     rotationEnabled: false,     // Disabled to eliminate whipsaw churn on normal pullbacks
     rotationMinCandidateScore: 92, // High bar if rotation is manually turned on
@@ -751,25 +751,27 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         stockRsi = rsiArr[rsiArr.length - 1] || 50;
       }
 
-      // Step 1: At +6.0% peak gain, move stop loss to Breakeven (+0.5% buffer)
-      if (maxProfitGainPercent >= 6.0) {
+      // Dynamic Profit Protection (Uncapped Upside):
+      // Step 1: At +6.5% peak gain, move stop loss to Breakeven (+0.5% buffer)
+      if (maxProfitGainPercent >= 6.5) {
         const beLevel = position.buyPrice * 1.005;
         if (beLevel > position.stopLoss) {
           position.stopLoss = beLevel;
         }
       }
 
-      // Step 2: At +9.0% gain, lock in +4.5% minimum profit
-      if (maxProfitGainPercent >= 9.0) {
-        const lockProfit = position.buyPrice * 1.045;
+      // Step 2: At +10.0% gain, lock in +5.0% minimum profit
+      if (maxProfitGainPercent >= 10.0) {
+        const lockProfit = position.buyPrice * 1.050;
         if (lockProfit > position.stopLoss) {
           position.stopLoss = lockProfit;
         }
       }
 
-      // Step 3: At +12.0% gain, activate RUNNER MODE (trail 20 EMA or lock +7.5%)
-      if (maxProfitGainPercent >= 12.0 && dayEma20) {
-        const runnerTrail = Math.max(position.buyPrice * 1.075, dayEma20 * 0.985);
+      // Step 3: At +14.0% gain, activate RUNNER MODE (trail 20 EMA or lock +8%)
+      // NO ARTIFICIAL CEILING: Let high-momentum leaders compound to +25%, +35%, +50%!
+      if (maxProfitGainPercent >= 14.0 && dayEma20) {
+        const runnerTrail = Math.max(position.buyPrice * 1.08, dayEma20 * 0.985);
         if (runnerTrail > position.stopLoss) {
           position.stopLoss = runnerTrail;
         }
@@ -783,19 +785,13 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       if (isTrailingStop ? trailingStopBreach : initialStopBreach) {
         triggerSell = true;
         sellPrice = isTrailingStop ? Math.min(close, position.stopLoss) : Math.min(close, position.stopLoss);
-        sellReason = isTrailingStop ? 'Trailing Stop Profit Locked' : 'Stop Loss Triggered';
+        sellReason = isTrailingStop ? 'Trailing Profit Locked' : 'Stop Loss Triggered';
       }
-      // 2. Check Target Profit Hit
-      else if (high >= position.targetPrice) {
-        triggerSell = true;
-        sellPrice = position.targetPrice;
-        sellReason = 'Target Profit Hit';
-      }
-      // 3. Technical Indicator Take-Profit (Parabolic Climax Blow-Off)
-      else if (currentGainPct >= 16.0 && stockRsi >= 80) {
+      // 2. Parabolic Climax Blow-Off Exit (Take profit only on parabolic exhaustion)
+      else if (currentGainPct >= 20.0 && stockRsi >= 82 && dayEma20 && close > dayEma20 * 1.12) {
         triggerSell = true;
         sellPrice = close;
-        sellReason = `Parabolic Climax Blow-Off (${stockRsi.toFixed(1)} RSI) Profit Taken`;
+        sellReason = `Parabolic Climax Blow-Off (${stockRsi.toFixed(1)} RSI, +${currentGainPct.toFixed(1)}%) Profit Taken`;
       }
 
       if (triggerSell) {
@@ -854,8 +850,8 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       const minCashReserve = totalPortfolioValue * 0.05;
       if (state.cash <= minCashReserve) return false;
 
-      const targetPositionSize = Math.max(6000, totalPortfolioValue * 0.10);
-      const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.50, state.cash - minCashReserve);
+      const targetPositionSize = Math.max(8000, totalPortfolioValue * 0.125);
+      const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
       let qty = Math.floor(capitalAllocation / targetStock.price);
 
       // High-priced momentum compounders (e.g. Bosch Ltd., Bajaj Auto):
@@ -894,17 +890,17 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
     // --- Pass 1: Deploy cash to qualified scanner candidates ---
     let todayBuysCount = 0;
-    const MAX_BUYS_PER_DAY = 2; // Stagger entries across days to prevent blowing cash at local tops
+    const MAX_BUYS_PER_DAY = 1; // Stagger 1 buy per day to focus strictly on the #1 ranked market leader
 
     for (const targetStock of candidates) {
       if (todayBuysCount >= MAX_BUYS_PER_DAY) break;
 
-      // Sector diversification: prevent more than 3 open positions in same sector (except ETFs)
+      // Sector diversification: max 2 positions per sector in an 8-position portfolio
       const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 3) continue;
+      if (targetStock.sector !== 'ETFs' && currentSectorCount >= 2) continue;
 
-      // Broad Market Regime Gate: in confirmed RISK_OFF downtrend, pause new equity purchases to protect capital
-      if (marketRegime.regime === 'RISK_OFF' && targetStock.sector !== 'ETFs' && state.holdings.length >= 6) {
+      // Broad Market Regime Gate: in confirmed RISK_OFF downtrend, halt new equity purchases to protect capital
+      if (marketRegime.regime === 'RISK_OFF' && targetStock.sector !== 'ETFs') {
         continue;
       }
 
@@ -1186,17 +1182,27 @@ async function reEvaluateHoldings() {
       stockRsi = rsiArr[rsiArr.length - 1] || 50;
     }
 
-    // Step 1: At +7.0% peak gain, move stop loss to Breakeven (+0.5% buffer)
-    if (maxProfitGainPercent >= 7.0) {
+    // Dynamic Profit Protection (Uncapped Upside):
+    // Step 1: At +6.5% peak gain, move stop loss to Breakeven (+0.5% buffer)
+    if (maxProfitGainPercent >= 6.5) {
       const beLevel = position.buyPrice * 1.005;
       if (beLevel > position.stopLoss) {
         position.stopLoss = beLevel;
       }
     }
 
-    // Step 2: At +11.0% gain, activate RUNNER MODE (trail 20 EMA)
-    if (maxProfitGainPercent >= 11.0 && dayEma20) {
-      const runnerTrail = Math.max(position.buyPrice * 1.06, dayEma20 * 0.98);
+    // Step 2: At +10.0% gain, lock in +5.0% minimum profit
+    if (maxProfitGainPercent >= 10.0) {
+      const lockProfit = position.buyPrice * 1.050;
+      if (lockProfit > position.stopLoss) {
+        position.stopLoss = lockProfit;
+      }
+    }
+
+    // Step 3: At +14.0% gain, activate RUNNER MODE (trail 20 EMA or lock +8%)
+    // NO ARTIFICIAL CEILING: Let high-momentum leaders compound to +25%, +35%, +50%!
+    if (maxProfitGainPercent >= 14.0 && dayEma20) {
+      const runnerTrail = Math.max(position.buyPrice * 1.08, dayEma20 * 0.985);
       if (runnerTrail > position.stopLoss) {
         position.stopLoss = runnerTrail;
       }
@@ -1210,19 +1216,13 @@ async function reEvaluateHoldings() {
     if (isTrailingStop ? trailingStopBreach : initialStopBreach) {
       triggerSell = true;
       sellPrice = isTrailingStop ? Math.min(close, position.stopLoss) : Math.min(close, position.stopLoss);
-      sellReason = isTrailingStop ? 'Trailing Stop Profit Locked' : 'Stop Loss Triggered';
-    } else if (high >= position.targetPrice) {
-      triggerSell = true;
-      sellPrice = position.targetPrice;
-      sellReason = 'Target Profit Hit (+25%)';
-    } else if (currentGainPct >= 18.0 && stockRsi >= 82) {
+      sellReason = isTrailingStop ? 'Trailing Profit Locked' : 'Stop Loss Triggered';
+    }
+    // Parabolic Climax Blow-Off Exit
+    else if (currentGainPct >= 20.0 && stockRsi >= 82 && dayEma20 && close > dayEma20 * 1.12) {
       triggerSell = true;
       sellPrice = close;
-      sellReason = `Parabolic Climax Blow-Off (${stockRsi.toFixed(1)} RSI) Profit Taken`;
-    } else if (tradingDaysHeld >= 35 && currentGainPct < -3.0 && dayEma20 && close < dayEma20) {
-      triggerSell = true;
-      sellPrice = close;
-      sellReason = `Stale Trade Time Exit (${tradingDaysHeld} Days Non-Performing)`;
+      sellReason = `Parabolic Climax Blow-Off (${stockRsi.toFixed(1)} RSI, +${currentGainPct.toFixed(1)}%) Profit Taken`;
     }
 
     if (triggerSell) {
@@ -1291,13 +1291,13 @@ async function deployIdleCash(simDate) {
     availableSlots = state.config.maxPositions - state.holdings.length;
     if (availableSlots <= 0 || state.cash < 1000) break;
 
-    // Target 8% of total portfolio per position — 12 positions × 8% = 96% deployed.
+    // Target 12.5% of total portfolio per position — 8 concentrated positions × 12.5% = 100% deployed.
     let currentHoldingsValue = 0;
     for (const h of state.holdings) currentHoldingsValue += h.value;
     const totalPortfolioValue = state.cash + currentHoldingsValue;
     const minCashReserve = totalPortfolioValue * 0.05;
     if (state.cash <= minCashReserve) break;
-    const targetPositionSize = Math.max(5000, totalPortfolioValue * 0.08);
+    const targetPositionSize = Math.max(8000, totalPortfolioValue * 0.125);
     const capitalAllocation = Math.min(targetPositionSize, state.cash * 0.60, state.cash - minCashReserve);
     let qty = Math.floor(capitalAllocation / targetStock.price);
 
