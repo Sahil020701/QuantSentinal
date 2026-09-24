@@ -262,6 +262,84 @@ function checkBreakouts(prices, highs, lows, lookbackPeriod = 20) {
   };
 }
 
+/**
+ * Calculate Average Directional Index (ADX) — Trend Strength Indicator
+ * ADX < 20: sideways/choppy (avoid entries)
+ * ADX 20-25: weak trend forming
+ * ADX > 25: strong confirmed trend (ideal for momentum entries)
+ * @param {number[]} highs
+ * @param {number[]} lows
+ * @param {number[]} closes
+ * @param {number} period - default 14
+ * @returns {(number|null)[]} Array of ADX values
+ */
+function calculateADX(highs, lows, closes, period = 14) {
+  const len = highs.length;
+  const adxValues = Array(len).fill(null);
+  if (len < period * 2 + 1) return adxValues;
+
+  const trArr = [];
+  const dmPlusArr = [];
+  const dmMinusArr = [];
+
+  // Calculate True Range, +DM, -DM
+  trArr.push(highs[0] - lows[0]);
+  dmPlusArr.push(0);
+  dmMinusArr.push(0);
+
+  for (let i = 1; i < len; i++) {
+    const hl = highs[i] - lows[i];
+    const hc = Math.abs(highs[i] - closes[i - 1]);
+    const lc = Math.abs(lows[i] - closes[i - 1]);
+    trArr.push(Math.max(hl, hc, lc));
+
+    const upMove = highs[i] - highs[i - 1];
+    const downMove = lows[i - 1] - lows[i];
+    dmPlusArr.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    dmMinusArr.push(downMove > upMove && downMove > 0 ? downMove : 0);
+  }
+
+  // Wilder smoothing for TR, +DM, -DM
+  let smoothTR = trArr.slice(0, period).reduce((a, b) => a + b, 0);
+  let smoothDMPlus = dmPlusArr.slice(0, period).reduce((a, b) => a + b, 0);
+  let smoothDMMinus = dmMinusArr.slice(0, period).reduce((a, b) => a + b, 0);
+
+  const diPlusArr = [];
+  const diMinusArr = [];
+
+  // First DI values
+  diPlusArr.push(smoothTR > 0 ? (smoothDMPlus / smoothTR) * 100 : 0);
+  diMinusArr.push(smoothTR > 0 ? (smoothDMMinus / smoothTR) * 100 : 0);
+
+  for (let i = period; i < len; i++) {
+    smoothTR = smoothTR - smoothTR / period + trArr[i];
+    smoothDMPlus = smoothDMPlus - smoothDMPlus / period + dmPlusArr[i];
+    smoothDMMinus = smoothDMMinus - smoothDMMinus / period + dmMinusArr[i];
+    diPlusArr.push(smoothTR > 0 ? (smoothDMPlus / smoothTR) * 100 : 0);
+    diMinusArr.push(smoothTR > 0 ? (smoothDMMinus / smoothTR) * 100 : 0);
+  }
+
+  // DX values from DI arrays
+  const dxArr = [];
+  for (let i = 0; i < diPlusArr.length; i++) {
+    const diSum = diPlusArr[i] + diMinusArr[i];
+    dxArr.push(diSum > 0 ? (Math.abs(diPlusArr[i] - diMinusArr[i]) / diSum) * 100 : 0);
+  }
+
+  // First ADX = average of first 'period' DX values
+  if (dxArr.length < period) return adxValues;
+  let adx = dxArr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const startIdx = period * 2 - 1; // offset into original array
+  adxValues[startIdx] = adx;
+
+  for (let i = period; i < dxArr.length; i++) {
+    adx = (adx * (period - 1) + dxArr[i]) / period;
+    adxValues[startIdx + (i - period) + 1] = adx;
+  }
+
+  return adxValues;
+}
+
 module.exports = {
   calculateSMA,
   calculateEMA,
@@ -270,5 +348,6 @@ module.exports = {
   calculateATR,
   calculateRVOL,
   calculateSlope,
-  checkBreakouts
+  checkBreakouts,
+  calculateADX
 };
