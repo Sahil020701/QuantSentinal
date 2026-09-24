@@ -395,14 +395,26 @@ function evaluateMarketRegime(simDate, cachedData) {
   const rsiArr = calculateRSI(closes, 14);
 
   const currClose = closes[closes.length - 1];
+  const prevClose1 = closes[closes.length - 2] || currClose;
+  const prevClose2 = closes[closes.length - 3] || prevClose1;
   const ema20 = ema20Arr[ema20Arr.length - 1];
   const ema50 = ema50Arr[ema50Arr.length - 1];
   const rsi = rsiArr[rsiArr.length - 1] || 50;
 
+  // Immediate risk off if below 20 EMA or weak RSI
+  if (ema20 && (currClose < ema20 || rsi < 45)) {
+    return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN' };
+  }
+
+  // Caution / Neutral if index is losing momentum (consecutive down days or within 0.8% of 20 EMA)
+  const distToEma20 = ema20 ? (currClose - ema20) / ema20 : 0.05;
+  const consecutiveDown = currClose < prevClose1 && prevClose1 < prevClose2;
+  if (distToEma20 < 0.008 || consecutiveDown) {
+    return { regime: 'NEUTRAL', benchmarkRsi: rsi, trend: 'CONSOLIDATING' };
+  }
+
   if (ema20 && currClose > ema20 && (ema50 ? ema20 >= ema50 : true) && rsi >= 50) {
     return { regime: 'BULLISH', benchmarkRsi: rsi, trend: 'UP' };
-  } else if (ema20 && (currClose < ema20 || rsi < 44)) {
-    return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN' };
   }
   return { regime: 'NEUTRAL', benchmarkRsi: rsi, trend: 'CONSOLIDATING' };
 }
@@ -530,10 +542,11 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       currentClose <= ema20 * 1.035 &&
       currentClose > currentOpen &&
       currentClose > prevClose &&
+      currentRvol >= 0.95 && // Require legitimate volume, reject low-volume traps
       clv >= 0.55 &&
       rsiVal >= 46 &&
       rsiVal <= 65 &&
-      (ema50 ? ema20 >= ema50 * 0.98 : true)
+      (ema50 ? ema20 >= ema50 : true)
     ) {
       buySignal = true;
       strategyName = 'SUPPORT_PULLBACK';
@@ -622,7 +635,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
 
       score = Math.max(50, Math.min(100, Math.round(score)));
 
-      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 88 : 78;
+      const minScoreThreshold = marketRegime.regime === 'RISK_OFF' ? 90 : (marketRegime.regime === 'NEUTRAL' ? 84 : 78);
       if (score >= minScoreThreshold) {
         candidates.push({
           symbol: stock.symbol,
@@ -752,26 +765,34 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
 
       // Dynamic Profit Protection (Uncapped Upside):
-      // Step 1: At +6.5% peak gain, move stop loss to Breakeven (+0.5% buffer)
-      if (maxProfitGainPercent >= 6.5) {
+      // Step 1: At +5.5% peak gain, move stop loss to Breakeven (+0.5% buffer)
+      if (maxProfitGainPercent >= 5.5) {
         const beLevel = position.buyPrice * 1.005;
         if (beLevel > position.stopLoss) {
           position.stopLoss = beLevel;
         }
       }
 
-      // Step 2: At +10.0% gain, lock in +5.0% minimum profit
-      if (maxProfitGainPercent >= 10.0) {
+      // Step 2: At +9.0% gain, lock in +5.0% minimum profit
+      if (maxProfitGainPercent >= 9.0) {
         const lockProfit = position.buyPrice * 1.050;
         if (lockProfit > position.stopLoss) {
           position.stopLoss = lockProfit;
         }
       }
 
-      // Step 3: At +14.0% gain, activate RUNNER MODE (trail 20 EMA or lock +8%)
+      // Step 3: At +12.0% gain, lock in +8.0% minimum profit (protects accrued gains)
+      if (maxProfitGainPercent >= 12.0) {
+        const lockProfit2 = position.buyPrice * 1.080;
+        if (lockProfit2 > position.stopLoss) {
+          position.stopLoss = lockProfit2;
+        }
+      }
+
+      // Step 4: At +15.0% gain, activate RUNNER MODE (trail 20 EMA or lock +10%)
       // NO ARTIFICIAL CEILING: Let high-momentum leaders compound to +25%, +35%, +50%!
-      if (maxProfitGainPercent >= 14.0 && dayEma20) {
-        const runnerTrail = Math.max(position.buyPrice * 1.08, dayEma20 * 0.985);
+      if (maxProfitGainPercent >= 15.0 && dayEma20) {
+        const runnerTrail = Math.max(position.buyPrice * 1.10, dayEma20 * 0.985);
         if (runnerTrail > position.stopLoss) {
           position.stopLoss = runnerTrail;
         }
@@ -899,8 +920,8 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
       if (targetStock.sector !== 'ETFs' && currentSectorCount >= 2) continue;
 
-      // Broad Market Regime Gate: in confirmed RISK_OFF downtrend, halt new equity purchases to protect capital
-      if (marketRegime.regime === 'RISK_OFF' && targetStock.sector !== 'ETFs') {
+      // Broad Market Regime Gate: in confirmed RISK_OFF downtrend, halt all new purchases to protect capital
+      if (marketRegime.regime === 'RISK_OFF') {
         continue;
       }
 
@@ -1183,26 +1204,34 @@ async function reEvaluateHoldings() {
     }
 
     // Dynamic Profit Protection (Uncapped Upside):
-    // Step 1: At +6.5% peak gain, move stop loss to Breakeven (+0.5% buffer)
-    if (maxProfitGainPercent >= 6.5) {
+    // Step 1: At +5.5% peak gain, move stop loss to Breakeven (+0.5% buffer)
+    if (maxProfitGainPercent >= 5.5) {
       const beLevel = position.buyPrice * 1.005;
       if (beLevel > position.stopLoss) {
         position.stopLoss = beLevel;
       }
     }
 
-    // Step 2: At +10.0% gain, lock in +5.0% minimum profit
-    if (maxProfitGainPercent >= 10.0) {
+    // Step 2: At +9.0% gain, lock in +5.0% minimum profit
+    if (maxProfitGainPercent >= 9.0) {
       const lockProfit = position.buyPrice * 1.050;
       if (lockProfit > position.stopLoss) {
         position.stopLoss = lockProfit;
       }
     }
 
-    // Step 3: At +14.0% gain, activate RUNNER MODE (trail 20 EMA or lock +8%)
+    // Step 3: At +12.0% gain, lock in +8.0% minimum profit (protects accrued gains)
+    if (maxProfitGainPercent >= 12.0) {
+      const lockProfit2 = position.buyPrice * 1.080;
+      if (lockProfit2 > position.stopLoss) {
+        position.stopLoss = lockProfit2;
+      }
+    }
+
+    // Step 4: At +15.0% gain, activate RUNNER MODE (trail 20 EMA or lock +10%)
     // NO ARTIFICIAL CEILING: Let high-momentum leaders compound to +25%, +35%, +50%!
-    if (maxProfitGainPercent >= 14.0 && dayEma20) {
-      const runnerTrail = Math.max(position.buyPrice * 1.08, dayEma20 * 0.985);
+    if (maxProfitGainPercent >= 15.0 && dayEma20) {
+      const runnerTrail = Math.max(position.buyPrice * 1.10, dayEma20 * 0.985);
       if (runnerTrail > position.stopLoss) {
         position.stopLoss = runnerTrail;
       }
