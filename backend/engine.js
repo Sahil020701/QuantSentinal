@@ -5,14 +5,14 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { exec } = require('child_process');
 const mongoose = require('mongoose');
-const { 
-  calculateSMA, 
-  calculateEMA, 
-  calculateRSI, 
-  calculateMACD, 
-  calculateATR, 
-  calculateRVOL, 
-  calculateSlope, 
+const {
+  calculateSMA,
+  calculateEMA,
+  calculateRSI,
+  calculateMACD,
+  calculateATR,
+  calculateRVOL,
+  calculateSlope,
   checkBreakouts,
   calculateADX
 } = require('./utils/indicators');
@@ -114,7 +114,7 @@ async function loadState() {
       console.warn("MongoDB read failed:", e.message);
     }
   }
-  
+
   if (inMemoryState) {
     return inMemoryState;
   }
@@ -132,7 +132,7 @@ async function saveState(state) {
       const stateData = { ...state };
       delete stateData._id;
       delete stateData.key;
-      
+
       await StateModel.findOneAndUpdate(
         { key: 'simulation_state' },
         stateData,
@@ -224,7 +224,7 @@ async function updateCache(endDateStr, forceRefresh = false) {
   // Create update promise and store it globally
   activeUpdatePromise = (async () => {
     console.log("Market data outdated or missing. Fetching live market data using Python yfinance script...");
-    
+
     // Dynamically calculate start date (365 days lookback to ensure 50+ trading bars for technical indicators)
     const endD = new Date(endDateStr);
     const startD = new Date(endD.getTime() - (365 * 24 * 60 * 60 * 1000));
@@ -268,7 +268,7 @@ async function updateCache(endDateStr, forceRefresh = false) {
       // Clean up temp file immediately - no persistent disk dependency
       try {
         fs.unlinkSync(tempOutputFile);
-      } catch (_) {}
+      } catch (_) { }
 
       // Update in-memory storage
       inMemoryMarketData = payload;
@@ -301,7 +301,7 @@ async function updateCache(endDateStr, forceRefresh = false) {
     } catch (err) {
       try {
         if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
-      } catch (_) {}
+      } catch (_) { }
       throw err;
     }
   })();
@@ -318,7 +318,7 @@ async function updateCache(endDateStr, forceRefresh = false) {
 // Generate aggressive narrative logs for Quant Sentinal
 function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, transactions) {
   const activeHoldingsSymbols = holdings.map(h => h.symbol.replace('.NS', '')).join(', ');
-  
+
   const marketSummaries = {
     BULLISH: [
       `Market action is highly constructive. Nifty is maintaining its upward trajectory. Bulls are in complete control.`,
@@ -473,7 +473,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       // 1. Max 1 accumulation tranche per holding
       // 2. Minimum cushion: unrealized profit >= +8.0%
       // 3. Held for at least 4 trading days (prevents premature re-entry)
-      const daysHeld = existingHolding.buyDate 
+      const daysHeld = existingHolding.buyDate
         ? Math.max(1, Math.round((new Date(simDate) - new Date(existingHolding.buyDate)) / (1000 * 60 * 60 * 24)))
         : 5;
 
@@ -658,8 +658,8 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
         continue;
       }
 
-      const minScoreThreshold = isAccumulationCandidate 
-        ? 83 
+      const minScoreThreshold = isAccumulationCandidate
+        ? 83
         : (marketRegime.regime === 'RISK_OFF' ? 88 : (marketRegime.regime === 'NEUTRAL' ? 85 : 80));
 
       if (score >= minScoreThreshold) {
@@ -750,13 +750,13 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
     // --- 1. Monthly Deposit Check (Deposit automatically on 1st trading day of each new month) ---
     const currentMonthKey = simDate.slice(0, 7); // e.g. '2026-09'
-    
+
     if (currentMonthKey !== lastDepositMonthKey) {
       const depositAmount = 20000.0;
       state.cash += depositAmount;
       currentTotalDeposited += depositAmount;
       lastDepositMonthKey = currentMonthKey;
-      
+
       todayTransactions.push({
         type: 'DEPOSIT',
         amount: depositAmount,
@@ -767,7 +767,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
     // --- 2. Portfolio Sell Checks (Evaluate active holdings) ---
     const remainingHoldings = [];
-    
+
     for (const position of state.holdings) {
       const stockData = cachedData[position.symbol];
       const dayBar = stockData ? stockData.find(row => row.date === simDate) : null;
@@ -811,7 +811,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       // Level 0: At +3.5% peak gain -> Move stop loss to Breakeven (+0.8% profit cushion)
       // Professional swing trading rule: Protect capital early without choking natural runner pullbacks
       if (peakProfitGainPercent >= 3.5) {
-        const beLevel = position.buyPrice * 1.008;
+        const beLevel = position.buyPrice * 1.01;
         if (beLevel > position.stopLoss) position.stopLoss = beLevel;
       }
 
@@ -887,7 +887,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         const profitPercent = (profit / cost) * 100;
 
         state.cash += revenue;
-        
+
         const completedTrade = {
           symbol: position.symbol,
           name: position.name,
@@ -916,7 +916,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
           profitPercent: profitPercent,
           reason: sellReason
         });
-        
+
         console.log(`[${simDate}] SOLD ${position.symbol} @ ₹${sellPrice.toFixed(2)} (${sellReason}). P&L: ₹${profit.toFixed(2)} (${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}%)`);
       } else {
         // Position remains open, update its current price
@@ -1187,7 +1187,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     let sentiment = 'NEUTRAL';
     const sellsCount = todayTransactions.filter(t => t.type === 'SELL').length;
     const buysCount = todayTransactions.filter(t => t.type === 'BUY').length;
-    
+
     if (sellsCount > 0) {
       const profitableSells = todayTransactions.filter(t => t.type === 'SELL' && t.profit > 0).length;
       sentiment = profitableSells > sellsCount / 2 ? 'BULLISH' : 'BEARISH';
@@ -1252,7 +1252,7 @@ async function getWatchlistQuotes(endDateStr) {
     if (history && history.length >= 2) {
       const todayBar = history[history.length - 1];
       const yesterdayBar = history[history.length - 2];
-      
+
       const change = todayBar.close - yesterdayBar.close;
       const changePercent = (change / yesterdayBar.close) * 100;
 
@@ -1801,7 +1801,7 @@ async function reEvaluateHoldings() {
 
     if (isTrailingStop ? trailingStopBreach : initialStopBreach) {
       triggerSell = true;
-      sellPrice = isTrailingStop 
+      sellPrice = isTrailingStop
         ? (dayBar.open && dayBar.open < position.stopLoss ? dayBar.open : position.stopLoss)
         : Math.min(close, position.stopLoss);
       sellReason = isTrailingStop ? 'Trailing Profit Locked' : 'Stop Loss Triggered';
@@ -1867,7 +1867,7 @@ async function deployIdleCash(simDate) {
   const state = await loadState();
   const targetDate = simDate || state.lastSimulationDate;
   const cachedData = await updateCache(targetDate);
-  
+
   const hasAccumulationCandidate = state.holdings.some(h => !h.isAccumulated && (h.profitPercent || 0) >= 8.0);
   let availableSlots = state.config.maxPositions - state.holdings.length;
   if ((availableSlots <= 0 && !hasAccumulationCandidate) || state.cash < 1000) {
