@@ -69,8 +69,6 @@ loadWatchlist();
 
 // Default initial state starting July 1, 2026
 const INITIAL_STATE = {
-  simulationStartDate: '2026-07-01',
-  simulationEndDate: null,
   lastSimulationDate: '2026-07-01',
   cash: 50000.0,
   holdings: [],
@@ -147,12 +145,10 @@ async function saveState(state) {
 }
 
 // Reset state
-async function resetSimulation(customStartDate, customEndDate = null) {
+async function resetSimulation(customStartDate) {
   const startDate = customStartDate || '2026-07-01';
   const state = {
     ...JSON.parse(JSON.stringify(INITIAL_STATE)),
-    simulationStartDate: startDate,
-    simulationEndDate: customEndDate || null,
     lastSimulationDate: startDate,
     cash: 50000.0,
     holdings: [],
@@ -171,7 +167,7 @@ async function resetSimulation(customStartDate, customEndDate = null) {
       {
         date: startDate,
         sentiment: 'NEUTRAL',
-        text: `Quant Sentinal Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation window set: ${startDate}${customEndDate ? ` to ${customEndDate}` : ' to Latest'}. Ready for market scanning and execution.`
+        text: `Quant Sentinal Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
       }
     ]
   };
@@ -368,7 +364,8 @@ function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, trans
         const profitLossText = t.profit >= 0 ? `PROFIT of +₹${t.profit.toFixed(2)} (+${t.profitPercent.toFixed(1)}%)` : `LOSS of -₹${Math.abs(t.profit).toFixed(2)} (${t.profitPercent.toFixed(1)}%)`;
         logsText += `- **SOLD** ${t.quantity} shares of ${t.symbol.replace('.NS', '')} at ₹${t.price.toFixed(2)}: Triggered ${t.reason}. Realized ${profitLossText}.\n`;
       } else if (t.type === 'DEPOSIT') {
-        logsText += `- **MONTHLY DEPOSIT**: Added ₹50,000.00 cash to the portfolio. Total cash available: ₹${cash.toFixed(2)}.\n`;
+        const amtStr = (t.amount || 20000.0).toLocaleString('en-IN');
+        logsText += `- **MONTHLY DEPOSIT**: Added ₹${amtStr}.00 cash to the portfolio. Total cash available: ₹${cash.toFixed(2)}.\n`;
       }
     });
     logsText += `\n`;
@@ -755,7 +752,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     const currentMonthKey = simDate.slice(0, 7); // e.g. '2026-09'
     
     if (currentMonthKey !== lastDepositMonthKey) {
-      const depositAmount = 50000.0;
+      const depositAmount = 20000.0;
       state.cash += depositAmount;
       currentTotalDeposited += depositAmount;
       lastDepositMonthKey = currentMonthKey;

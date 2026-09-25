@@ -6,8 +6,6 @@ const StateSchema = new mongoose.Schema({
     default: 'simulation_state', 
     unique: true 
   },
-  simulationStartDate: String,
-  simulationEndDate: String,
   lastSimulationDate: String,
   cash: Number,
   holdings: Array,

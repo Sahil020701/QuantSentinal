@@ -31,24 +31,15 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
   };
 
   const todayStr = getTodayStr();
-  const [selectedStartDate, setSelectedStartDate] = useState(portfolio.simulationStartDate || '2026-07-01');
-  const [selectedEndDate, setSelectedEndDate] = useState(portfolio.simulationEndDate || todayStr);
+  const [selectedStartDate, setSelectedStartDate] = useState('2026-07-01');
   const [autoReplay, setAutoReplay] = useState(true);
 
-  const startDatePresets = [
-    { label: 'July 1, 2026 (3M Baseline)', value: '2026-07-01' },
-    { label: 'Apr 1, 2026 (6M)', value: '2026-04-01' },
-    { label: 'Jan 1, 2026 (9M)', value: '2026-01-01' },
-    { label: 'Oct 1, 2025 (1Y Full)', value: '2025-10-01' },
-    { label: 'Today', value: todayStr }
-  ];
-
-  const endDatePresets = [
-    { label: 'Latest (Today)', value: todayStr },
+  const datePresets = [
+    { label: 'July 1 (Baseline)', value: '2026-07-01' },
+    { label: 'Aug 1, 2026', value: '2026-08-01' },
+    { label: 'Aug 17 (Dip)', value: '2026-08-17' },
     { label: 'Sept 1, 2026', value: '2026-09-01' },
-    { label: 'Aug 31, 2026', value: '2026-08-31' },
-    { label: 'July 31, 2026', value: '2026-07-31' },
-    { label: 'June 30, 2026', value: '2026-06-30' }
+    { label: 'Today (Clean Slate)', value: todayStr }
   ];
 
   const handleSaveConfig = async (e) => {
@@ -122,18 +113,11 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     }
   };
 
-  const isDateRangeInvalid = Boolean(selectedStartDate && selectedEndDate && selectedEndDate < selectedStartDate);
-
-  const handleResetCustomDate = async (targetStartDate = selectedStartDate, targetEndDate = selectedEndDate, replay = autoReplay) => {
-    if (targetEndDate < targetStartDate) {
-      setMessage("Error: Simulation end date cannot be earlier than start date.");
-      return;
-    }
-
-    const isToday = targetStartDate === todayStr && targetEndDate === todayStr;
+  const handleResetCustomDate = async (targetDate = selectedStartDate, replay = autoReplay) => {
+    const isToday = targetDate === 'today' || targetDate === todayStr;
     const confirmMessage = isToday
       ? `Are you sure you want to reset the simulation starting TODAY (${todayStr})?\n\nAll current trade history, active holdings, and logs will be wiped. The account will start fresh today with initial ₹50,000 cash.`
-      : `Are you sure you want to reset the simulation to run between ${targetStartDate} and ${targetEndDate}?\n\nAll current trade history, active holdings, and logs will be wiped, returning account cash to initial ₹50,000 on ${targetStartDate}.${replay ? `\n\nThe engine will automatically replay all trading days up to ${targetEndDate}.` : ''}`;
+      : `Are you sure you want to reset the simulation to start on ${targetDate}?\n\nAll current trade history, active holdings, and logs will be wiped, returning account cash to initial ₹50,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
 
     if (!window.confirm(confirmMessage)) return;
 
@@ -144,25 +128,21 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          startDate: targetStartDate,
-          endDate: targetEndDate,
+          startDate: targetDate,
           replay: isToday ? false : replay
         })
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.details || "Reset failed");
-      }
+      if (!res.ok) throw new Error("Reset failed");
       const data = await res.json();
       onReset(data.state);
       setMessage(
         isToday
           ? `Simulation successfully reset to Today (${todayStr}) with clean ₹50,000 slate.`
-          : `Simulation successfully reset with window ${targetStartDate} to ${targetEndDate}${replay ? ' and backtest replayed.' : '.'}`
+          : `Simulation successfully reset to ${targetDate}${replay ? ' and backtest replayed to today.' : '.'}`
       );
     } catch (err) {
       console.error(err);
-      setMessage(`Error: ${err.message || "Could not reset simulation."}`);
+      setMessage("Error: Could not reset simulation.");
     } finally {
       setResetting(false);
     }
@@ -310,106 +290,64 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
                 <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.25rem 0 0.5rem 0' }} />
 
-                {/* Custom Reset & Start/End Date Selection */}
+                {/* Custom Reset & Start Date Selection */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <label style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>
-                      Backtest Timeframe & Reset
+                      Reset Simulation & Start Date
                     </label>
                     <span style={{ 
                       fontSize: '0.75rem', 
                       padding: '0.2rem 0.55rem', 
                       borderRadius: '5px',
-                      background: (selectedStartDate === todayStr && selectedEndDate === todayStr) ? 'var(--green-glow)' : 'var(--accent-glow)',
-                      color: (selectedStartDate === todayStr && selectedEndDate === todayStr) ? 'var(--green)' : 'var(--accent)',
-                      border: `1px solid ${(selectedStartDate === todayStr && selectedEndDate === todayStr) ? 'var(--green-border)' : 'var(--accent-border)'}`,
+                      background: selectedStartDate === todayStr ? 'var(--green-glow)' : 'var(--accent-glow)',
+                      color: selectedStartDate === todayStr ? 'var(--green)' : 'var(--accent)',
+                      border: `1px solid ${selectedStartDate === todayStr ? 'var(--green-border)' : 'var(--accent-border)'}`,
                       fontWeight: '600'
                     }}>
-                      {(selectedStartDate === todayStr && selectedEndDate === todayStr) ? 'Live Forward Mode' : 'Custom Backtest Window'}
+                      {selectedStartDate === todayStr ? 'Live Forward Mode' : 'Historical Backtest'}
                     </span>
                   </div>
 
                   <div className="config-desc" style={{ marginTop: '-0.25rem' }}>
-                    Select both Start Date and End Date to test the algorithm on any historical window up to 1 year, or choose today for a clean slate.
+                    Choose any past date to run a fresh retrospective backtest, or pick today to start trading from a clean slate.
                   </div>
 
-                  {/* Date Range Inputs */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.85rem', marginTop: '0.1rem' }}>
-                    {/* Start Date */}
-                    <div className="config-item">
-                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Simulation Start Date</label>
-                      <input 
-                        type="date" 
-                        value={selectedStartDate}
-                        min="2025-10-01"
-                        max={todayStr}
-                        onChange={(e) => setSelectedStartDate(e.target.value)}
-                        className="config-input"
-                        disabled={resetting || running}
-                        style={{ cursor: 'pointer' }}
-                      />
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.35rem' }}>
-                        {startDatePresets.map((preset) => (
-                          <button
-                            key={preset.value}
-                            type="button"
-                            className={`preset-pill ${selectedStartDate === preset.value ? 'active' : ''}`}
-                            onClick={() => setSelectedStartDate(preset.value)}
-                            disabled={resetting || running}
-                            style={{ fontSize: '0.7rem', padding: '0.2rem 0.45rem' }}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* End Date */}
-                    <div className="config-item">
-                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Simulation End Date</label>
-                      <input 
-                        type="date" 
-                        value={selectedEndDate}
-                        min={selectedStartDate || "2025-10-01"}
-                        max={todayStr}
-                        onChange={(e) => setSelectedEndDate(e.target.value)}
-                        className="config-input"
-                        disabled={resetting || running}
-                        style={{ cursor: 'pointer' }}
-                      />
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.35rem' }}>
-                        {endDatePresets.map((preset) => (
-                          <button
-                            key={preset.value}
-                            type="button"
-                            className={`preset-pill ${selectedEndDate === preset.value ? 'active' : ''}`}
-                            onClick={() => setSelectedEndDate(preset.value)}
-                            disabled={resetting || running}
-                            style={{ fontSize: '0.7rem', padding: '0.2rem 0.45rem' }}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                  {/* Date Input */}
+                  <div className="config-item" style={{ marginTop: '0.1rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Choose Start Date (YYYY-MM-DD)</label>
+                    <input 
+                      type="date" 
+                      value={selectedStartDate}
+                      min="2025-01-01"
+                      max={todayStr}
+                      onChange={(e) => setSelectedStartDate(e.target.value)}
+                      className="config-input"
+                      disabled={resetting || running}
+                      style={{ cursor: 'pointer' }}
+                    />
                   </div>
 
-                  {/* Range Validation Warning */}
-                  {isDateRangeInvalid && (
-                    <div style={{ 
-                      padding: '0.5rem 0.75rem', 
-                      borderRadius: '6px', 
-                      background: 'rgba(239, 68, 68, 0.1)', 
-                      border: '1px solid rgba(239, 68, 68, 0.3)', 
-                      color: 'var(--red)', 
-                      fontSize: '0.8rem' 
-                    }}>
-                      ⚠️ End date cannot be earlier than start date ({selectedStartDate}).
+                  {/* Preset Pills */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick Date Presets:</div>
+                    <div className="preset-pills">
+                      {datePresets.map((preset) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          className={`preset-pill ${selectedStartDate === preset.value ? 'active' : ''}`}
+                          onClick={() => setSelectedStartDate(preset.value)}
+                          disabled={resetting || running}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
 
                   {/* Auto-Replay Toggle */}
-                  {!(selectedStartDate === todayStr && selectedEndDate === todayStr) && (
+                  {selectedStartDate !== todayStr && (
                     <label style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
@@ -423,32 +361,32 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                         type="checkbox" 
                         checked={autoReplay}
                         onChange={(e) => setAutoReplay(e.target.checked)}
-                        disabled={resetting || running || isDateRangeInvalid}
+                        disabled={resetting || running}
                         style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
                       />
-                      <span>Automatically replay trades across window: <strong>{selectedStartDate}</strong> → <strong>{selectedEndDate}</strong></span>
+                      <span>Automatically replay backtest trades from <strong>{selectedStartDate}</strong> to today</span>
                     </label>
                   )}
 
                   {/* Reset Action Button */}
                   <button 
-                    onClick={() => handleResetCustomDate(selectedStartDate, selectedEndDate, autoReplay)} 
+                    onClick={() => handleResetCustomDate(selectedStartDate, autoReplay)} 
                     className="btn btn-danger" 
                     style={{ width: '100%', marginTop: '0.35rem', fontWeight: '600' }}
-                    disabled={resetting || running || !selectedStartDate || !selectedEndDate || isDateRangeInvalid}
+                    disabled={resetting || running || !selectedStartDate}
                   >
                     {resetting 
                       ? "Resetting & Replaying Simulation..." 
-                      : (selectedStartDate === todayStr && selectedEndDate === todayStr)
+                      : selectedStartDate === todayStr 
                         ? "Reset to Today (Clean Slate ₹50k)" 
                         : autoReplay 
-                          ? `Reset & Run Backtest (${selectedStartDate} → ${selectedEndDate})` 
+                          ? `Reset & Run Backtest from ${selectedStartDate}` 
                           : `Reset Baseline to ${selectedStartDate}`
                     }
                   </button>
 
                   <div className="config-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Reinitializes cash balance to ₹50,000 on {selectedStartDate} and simulates day-by-day up to {selectedEndDate}.
+                    Wipes all trade history, active holdings, and logs. Reinitializes cash balance to ₹50,000 starting on {selectedStartDate}.
                   </div>
                 </div>
               </div>
