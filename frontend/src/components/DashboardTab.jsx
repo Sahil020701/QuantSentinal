@@ -62,12 +62,22 @@ export default function DashboardTab({ portfolio }) {
     [valuationHistory, selectedRange]
   );
 
-  // Period-level performance
-  const periodStart = filteredHistory[0]?.totalValue ?? totalValue;
-  const periodEnd   = filteredHistory[filteredHistory.length - 1]?.totalValue ?? totalValue;
-  const periodChange    = periodEnd - periodStart;
-  const periodChangePct = periodStart !== 0 ? (periodChange / periodStart) * 100 : 0;
-  const periodIsUp      = periodChange >= 0;
+  // Period-level performance — deposit-adjusted
+  // We use the stored profitPercent (= (totalValue - totalDeposited) / totalDeposited × 100)
+  // which the backend already corrects for monthly injections.
+  // Comparing the ROI at period-start vs period-end gives the true trading return for the period.
+  const periodStartROI  = filteredHistory[0]?.profitPercent ?? 0;
+  const periodEndROI    = filteredHistory[filteredHistory.length - 1]?.profitPercent ?? 0;
+  const periodChangePct = periodEndROI - periodStartROI;   // delta of deposit-adjusted ROI
+  const periodIsUp      = periodChangePct >= 0;
+
+  // For displaying an ₹ amount: use the actual trading gain = totalValue - totalDeposited at each end.
+  // Difference represents pure P&L gained during the period (deposit-neutral).
+  const periodStartCapital = filteredHistory[0]?.totalDeposited ?? totalDeposited;
+  const periodStartValue   = filteredHistory[0]?.totalValue ?? totalValue;
+  const periodStartTradingPL = periodStartValue - periodStartCapital;
+  const periodEndTradingPL   = totalValue - totalDeposited;
+  const periodChangeAmt = periodEndTradingPL - periodStartTradingPL;
 
   return (
     <div className="tab-content">
@@ -80,12 +90,12 @@ export default function DashboardTab({ portfolio }) {
         </div>
 
         <div className="kpi-card green">
-          <div className="kpi-label">Net Return</div>
+          <div className="kpi-label">Trading P&amp;L</div>
           <div className="kpi-value" style={{ color: netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {netProfit >= 0 ? '+' : ''}₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className={`kpi-sub ${profitPercent >= 0 ? 'positive' : 'negative'}`}>
-            {profitPercent >= 0 ? '▲' : '▼'} {profitPercent.toFixed(2)}% Cumulative Return
+            {profitPercent >= 0 ? '▲' : '▼'} {Math.abs(profitPercent).toFixed(2)}% ROI (excl. deposits)
           </div>
         </div>
 
@@ -128,13 +138,13 @@ export default function DashboardTab({ portfolio }) {
                   LIVE
                 </span>
               </h2>
-              {/* Period performance pill */}
+              {/* Period performance pill — deposit-adjusted */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{
                   fontSize: '0.82rem', fontWeight: 700,
                   color: periodIsUp ? '#16a34a' : '#dc2626'
                 }}>
-                  {periodIsUp ? '▲ +' : '▼ '}₹{Math.abs(periodChange).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {periodIsUp ? '▲ +' : '▼ '}₹{Math.abs(periodChangeAmt).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <span style={{
                   fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
@@ -142,10 +152,10 @@ export default function DashboardTab({ portfolio }) {
                   color: periodIsUp ? '#16a34a' : '#dc2626',
                   border: `1px solid ${periodIsUp ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.25)'}`,
                 }}>
-                  {periodIsUp ? '+' : ''}{periodChangePct.toFixed(2)}%
+                  {periodIsUp ? '+' : ''}{Math.abs(periodChangePct).toFixed(2)}% ROI
                 </span>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                  {activeRange === 'All' ? 'Since Inception' : `Past ${activeRange}`}
+                  {activeRange === 'All' ? 'Since Inception' : `Past ${activeRange}`} · excl. deposits
                 </span>
               </div>
             </div>
