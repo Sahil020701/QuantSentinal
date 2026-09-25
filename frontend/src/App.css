@@ -685,6 +685,37 @@
   border-color: var(--accent);
 }
 
+.preset-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.preset-pill {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preset-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.preset-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
 /* Modal details */
 .modal-overlay {
   position: fixed;
@@ -857,4 +888,199 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ========================================================
+   Algo Top 25 Tab Styles
+   ======================================================== */
+.algo-top25-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: help;
+}
+
+.indicator-badge:hover {
+  transform: translateY(-1px);
+}
+
+.indicator-badge-pass {
+  background: var(--green-glow);
+  color: var(--green);
+  border: 1px solid var(--green-border);
+}
+
+.indicator-badge-pass:hover {
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.25);
+}
+
+.indicator-badge-fail {
+  background: var(--red-glow);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+}
+
+.indicator-badge-fail:hover {
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+}
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.rank-top-1 {
+  background: linear-gradient(135deg, #ffd700, #ffa500);
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
+}
+
+.rank-top-2 {
+  background: linear-gradient(135deg, #e2e8f0, #94a3b8);
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(148, 163, 184, 0.4);
+}
+
+.rank-top-3 {
+  background: linear-gradient(135deg, #fed7aa, #f97316);
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.4);
+}
+
+.rank-standard {
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.score-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: -0.2px;
+}
+
+.score-chip-super {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+  border: 1px solid rgba(22, 163, 74, 0.3);
+}
+
+.score-chip-high {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.score-chip-mid {
+  background: rgba(202, 138, 4, 0.1);
+  color: var(--amber);
+  border: 1px solid rgba(202, 138, 4, 0.3);
+}
+
+.score-progress-bar {
+  width: 50px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+.score-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.indicator-legend-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legend-dot-pass {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.legend-dot-fail {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.card-grid-top25 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.25rem;
+}
+
+.algo-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.25rem;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.algo-card:hover {
+  border-color: var(--border-color-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.algo-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.algo-card-indicators-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
 }

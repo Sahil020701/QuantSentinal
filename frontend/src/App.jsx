@@ -6,6 +6,7 @@ import LogTab from './components/LogTab';
 import ScannerTab from './components/ScannerTab';
 import LedgerTab from './components/LedgerTab';
 import ConfigTab from './components/ConfigTab';
+import AlgoTop25Tab from './components/AlgoTop25Tab';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
@@ -122,6 +123,12 @@ export default function App() {
           Market Scanner
         </button>
         <button
+          onClick={() => setActiveTab('algo')}
+          className={`tab-btn ${activeTab === 'algo' ? 'active' : ''}`}
+        >
+          Algo Top 25
+        </button>
+        <button
           onClick={() => setActiveTab('logs')}
           className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
         >
@@ -149,6 +156,10 @@ export default function App() {
 
         {activeTab === 'scanner' && (
           <ScannerTab />
+        )}
+
+        {activeTab === 'algo' && (
+          <AlgoTop25Tab />
         )}
 
         {activeTab === 'logs' && (

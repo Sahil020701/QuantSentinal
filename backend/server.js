@@ -12,7 +12,8 @@ const {
   runSimulation, 
   reEvaluateHoldings,
   deployIdleCash,
-  getWatchlistQuotes 
+  getWatchlistQuotes,
+  getTop25AlgoRankings
 } = require('./engine');
 
 const app = express();
@@ -88,6 +89,20 @@ app.get('/api/scanner', async (req, res) => {
   }
 });
 
+// GET Top 25 Algo Rankings with Indicator Pass/Fail Breakdown
+app.get('/api/algo-top25', async (req, res) => {
+  try {
+    const { date } = req.query;
+    const todayStr = getTodayUTCDateString();
+    const targetDate = date || todayStr;
+    const data = await getTop25AlgoRankings(targetDate);
+    res.json(data);
+  } catch (error) {
+    console.error("Error fetching top 25 algo rankings:", error);
+    res.status(500).json({ error: "Failed to load algorithm rankings", details: error.message });
+  }
+});
+
 // POST Trigger Catch-up Run Manually
 app.post('/api/trigger-run', async (req, res) => {
   try {
@@ -105,12 +120,19 @@ app.post('/api/trigger-run', async (req, res) => {
 // POST Reset Simulation
 app.post('/api/reset', async (req, res) => {
   try {
-    const { startDate } = req.body || {};
+    const { startDate, replay = true } = req.body || {};
     const todayStr = getTodayUTCDateString();
     const targetStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2026-07-01');
     
-    console.log(`Resetting simulation baseline to ${targetStartDate}...`);
-    const state = await resetSimulation(targetStartDate);
+    console.log(`Resetting simulation baseline to ${targetStartDate} (replay=${replay})...`);
+    let state = await resetSimulation(targetStartDate);
+
+    if (replay && targetStartDate < todayStr) {
+      console.log(`Auto-replaying simulation from ${targetStartDate} to ${todayStr}...`);
+      state = await runSimulation(todayStr, false);
+      state = await deployIdleCash(todayStr);
+    }
+
     res.json({ message: `Simulation reset successful with start date ${targetStartDate}.`, state });
   } catch (error) {
     console.error("Error resetting simulation:", error);

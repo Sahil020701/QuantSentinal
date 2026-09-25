@@ -21,6 +21,27 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState('');
 
+  // Simulation start date selection state
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getTodayStr();
+  const [selectedStartDate, setSelectedStartDate] = useState('2026-07-01');
+  const [autoReplay, setAutoReplay] = useState(true);
+
+  const datePresets = [
+    { label: 'July 1 (Baseline)', value: '2026-07-01' },
+    { label: 'Aug 1, 2026', value: '2026-08-01' },
+    { label: 'Aug 17 (Dip)', value: '2026-08-17' },
+    { label: 'Sept 1, 2026', value: '2026-09-01' },
+    { label: 'Today (Clean Slate)', value: todayStr }
+  ];
+
   const handleSaveConfig = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -92,42 +113,33 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     }
   };
 
-  const handleResetToday = async () => {
-    if (!window.confirm("Are you sure you want to reset the simulation starting TODAY? All trade history and active positions will be cleared, and the account will start fresh today with initial ₹50,000 cash (as if created today).")) return;
-    setResetting(true);
-    setMessage('');
-    try {
-      const res = await fetch(`${API_URL}/api/reset`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startDate: 'today' })
-      });
-      if (!res.ok) throw new Error("Reset failed");
-      const data = await res.json();
-      onReset(data.state);
-      setMessage("Simulation successfully reset with start date set to Today (Day 1 Clean Slate).");
-    } catch (err) {
-      console.error(err);
-      setMessage("Error: Could not reset simulation.");
-    } finally {
-      setResetting(false);
-    }
-  };
+  const handleResetCustomDate = async (targetDate = selectedStartDate, replay = autoReplay) => {
+    const isToday = targetDate === 'today' || targetDate === todayStr;
+    const confirmMessage = isToday
+      ? `Are you sure you want to reset the simulation starting TODAY (${todayStr})?\n\nAll current trade history, active holdings, and logs will be wiped. The account will start fresh today with initial ₹50,000 cash.`
+      : `Are you sure you want to reset the simulation to start on ${targetDate}?\n\nAll current trade history, active holdings, and logs will be wiped, returning account cash to initial ₹50,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
 
-  const handleResetHistorical = async () => {
-    if (!window.confirm("Are you sure you want to reset the simulation to July 1, 2026? All trade history and logs will be wiped, returning account cash to initial ₹50,000 on July 1, 2026.")) return;
+    if (!window.confirm(confirmMessage)) return;
+
     setResetting(true);
     setMessage('');
     try {
       const res = await fetch(`${API_URL}/api/reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startDate: '2026-07-01' })
+        body: JSON.stringify({
+          startDate: targetDate,
+          replay: isToday ? false : replay
+        })
       });
       if (!res.ok) throw new Error("Reset failed");
       const data = await res.json();
       onReset(data.state);
-      setMessage("Simulation successfully reset to July 1, 2026 baseline.");
+      setMessage(
+        isToday
+          ? `Simulation successfully reset to Today (${todayStr}) with clean ₹50,000 slate.`
+          : `Simulation successfully reset to ${targetDate}${replay ? ' and backtest replayed to today.' : '.'}`
+      );
     } catch (err) {
       console.error(err);
       setMessage("Error: Could not reset simulation.");
@@ -278,28 +290,104 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
                 <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.25rem 0 0.5rem 0' }} />
 
-                <button 
-                  onClick={handleResetToday} 
-                  className="btn btn-warning" 
-                  style={{ width: '100%', fontWeight: '600' }}
-                  disabled={resetting || running}
-                >
-                  {resetting ? "Resetting..." : "Reset Start Date to Today (Fresh Start)"}
-                </button>
-                <div className="config-desc" style={{ marginBottom: '0.5rem' }}>
-                  Sets account baseline to today as if created right now with initial ₹50,000 cash (no historical August backtest replay).
-                </div>
+                {/* Custom Reset & Start Date Selection */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+                      Reset Simulation & Start Date
+                    </label>
+                    <span style={{ 
+                      fontSize: '0.75rem', 
+                      padding: '0.2rem 0.55rem', 
+                      borderRadius: '5px',
+                      background: selectedStartDate === todayStr ? 'var(--green-glow)' : 'var(--accent-glow)',
+                      color: selectedStartDate === todayStr ? 'var(--green)' : 'var(--accent)',
+                      border: `1px solid ${selectedStartDate === todayStr ? 'var(--green-border)' : 'var(--accent-border)'}`,
+                      fontWeight: '600'
+                    }}>
+                      {selectedStartDate === todayStr ? 'Live Forward Mode' : 'Historical Backtest'}
+                    </span>
+                  </div>
 
-                <button 
-                  onClick={handleResetHistorical} 
-                  className="btn btn-danger" 
-                  style={{ width: '100%' }}
-                  disabled={resetting || running}
-                >
-                  {resetting ? "Resetting..." : "Reset to July 1 Baseline (Backtest)"}
-                </button>
-                <div className="config-desc">
-                  Wipes history and resets simulation to July 1, 2026 baseline for full retrospective backtesting.
+                  <div className="config-desc" style={{ marginTop: '-0.25rem' }}>
+                    Choose any past date to run a fresh retrospective backtest, or pick today to start trading from a clean slate.
+                  </div>
+
+                  {/* Date Input */}
+                  <div className="config-item" style={{ marginTop: '0.1rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Choose Start Date (YYYY-MM-DD)</label>
+                    <input 
+                      type="date" 
+                      value={selectedStartDate}
+                      min="2025-01-01"
+                      max={todayStr}
+                      onChange={(e) => setSelectedStartDate(e.target.value)}
+                      className="config-input"
+                      disabled={resetting || running}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </div>
+
+                  {/* Preset Pills */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick Date Presets:</div>
+                    <div className="preset-pills">
+                      {datePresets.map((preset) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          className={`preset-pill ${selectedStartDate === preset.value ? 'active' : ''}`}
+                          onClick={() => setSelectedStartDate(preset.value)}
+                          disabled={resetting || running}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Auto-Replay Toggle */}
+                  {selectedStartDate !== todayStr && (
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.55rem', 
+                      cursor: 'pointer', 
+                      fontSize: '0.825rem',
+                      color: 'var(--text-secondary)',
+                      marginTop: '0.15rem'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={autoReplay}
+                        onChange={(e) => setAutoReplay(e.target.checked)}
+                        disabled={resetting || running}
+                        style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
+                      />
+                      <span>Automatically replay backtest trades from <strong>{selectedStartDate}</strong> to today</span>
+                    </label>
+                  )}
+
+                  {/* Reset Action Button */}
+                  <button 
+                    onClick={() => handleResetCustomDate(selectedStartDate, autoReplay)} 
+                    className="btn btn-danger" 
+                    style={{ width: '100%', marginTop: '0.35rem', fontWeight: '600' }}
+                    disabled={resetting || running || !selectedStartDate}
+                  >
+                    {resetting 
+                      ? "Resetting & Replaying Simulation..." 
+                      : selectedStartDate === todayStr 
+                        ? "Reset to Today (Clean Slate ₹50k)" 
+                        : autoReplay 
+                          ? `Reset & Run Backtest from ${selectedStartDate}` 
+                          : `Reset Baseline to ${selectedStartDate}`
+                    }
+                  </button>
+
+                  <div className="config-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Wipes all trade history, active holdings, and logs. Reinitializes cash balance to ₹50,000 starting on {selectedStartDate}.
+                  </div>
                 </div>
               </div>
             </div>

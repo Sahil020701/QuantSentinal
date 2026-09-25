@@ -1319,6 +1319,386 @@ async function getWatchlistQuotes(endDateStr) {
   return result;
 }
 
+// Scan and rank entire stock universe using algorithmic multi-factor criteria.
+// Returns Top 25 stocks along with each indicator and pass/fail boolean status.
+async function getTop25AlgoRankings(simDate) {
+  let state;
+  try {
+    state = await loadState();
+  } catch (_) {
+    state = { holdings: [], config: { maxPositions: 12 } };
+  }
+
+  let targetDate = simDate;
+  if (!targetDate || targetDate === 'today') {
+    targetDate = state.lastSimulationDate || formatUTCDate(new Date());
+  }
+
+  const cachedData = await updateCache(targetDate);
+  const marketRegime = evaluateMarketRegime(targetDate, cachedData);
+
+  // Benchmark return over last 20 sessions (Nifty 50 or fallback)
+  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  let benchmarkReturn20d = 0;
+  if (benchmarkData && benchmarkData.length > 0) {
+    const bIdx = benchmarkData.findIndex(row => row.date === targetDate);
+    const validBIdx = bIdx !== -1 ? bIdx : benchmarkData.length - 1;
+    if (validBIdx >= 20) {
+      const bClose = benchmarkData[validBIdx].close;
+      const bPast = benchmarkData[validBIdx - 20].close;
+      if (bPast > 0) benchmarkReturn20d = (bClose - bPast) / bPast;
+    }
+  }
+
+  const scoredStocks = [];
+
+  for (const stock of WATCHLIST) {
+    // Exclude index ETFs from single-stock ranking
+    if (stock.sector === 'ETFs') continue;
+
+    const history = cachedData[stock.symbol];
+    if (!history || history.length < 15) continue;
+
+    let dayIdx = history.findIndex(row => row.date === targetDate);
+    if (dayIdx === -1) dayIdx = history.length - 1;
+    if (dayIdx < 14) continue;
+
+    const subHistory = history.slice(0, dayIdx + 1);
+    const closes = subHistory.map(r => r.close);
+    const highs = subHistory.map(r => r.high);
+    const lows = subHistory.map(r => r.low);
+    const opens = subHistory.map(r => r.open !== undefined ? r.open : r.close);
+    const volumes = subHistory.map(r => r.volume || 0);
+
+    const len = closes.length;
+    const currentClose = closes[len - 1];
+    const prevClose = closes[len - 2] || currentClose;
+    const currentOpen = opens[len - 1];
+    const currentHigh = highs[len - 1];
+    const currentLow = lows[len - 1];
+
+    if (currentClose < 20) continue; // skip micro/penny stocks
+
+    const dayChange = currentClose - prevClose;
+    const dayChangePercent = prevClose > 0 ? (dayChange / prevClose) * 100 : 0;
+
+    // Technical calculations
+    const ema20Arr = calculateEMA(closes, 20);
+    const ema50Arr = calculateEMA(closes, 50);
+    const rsiArr = calculateRSI(closes, 14);
+    const rvolArr = calculateRVOL(volumes, 20);
+    const adxArr = calculateADX(highs, lows, closes, 14);
+    const breakout20 = checkBreakouts(closes, highs, lows, 20);
+    const ema20Slope = calculateSlope(ema20Arr, 5);
+    const ema50Slope = calculateSlope(ema50Arr, 10);
+
+    const ema20 = ema20Arr[len - 1];
+    const ema50 = ema50Arr[len - 1];
+    const rsi = rsiArr[len - 1] || 50;
+    const rvol = rvolArr[len - 1] || 1.0;
+    const adx = adxArr[len - 1] || 20;
+
+    // Relative strength & extension returns
+    const past20Close = closes[Math.max(0, len - 21)];
+    const stockReturn20d = past20Close > 0 ? (currentClose - past20Close) / past20Close : 0;
+    const alpha20d = (stockReturn20d - benchmarkReturn20d) * 100;
+
+    const past10Close = closes[Math.max(0, len - 11)];
+    const stockReturn10d = past10Close > 0 ? (currentClose - past10Close) / past10Close : 0;
+
+    // CLV
+    const candleRange = currentHigh - currentLow;
+    const clv = candleRange > 0 ? (currentClose - currentLow) / candleRange : 0.5;
+
+    // Distance from 20 EMA & 20-day high
+    const distFromEma20 = ema20 > 0 ? ((currentClose - ema20) / ema20) * 100 : 0;
+    const highestHigh20 = breakout20.highestHigh20 || currentHigh;
+    const distFrom20dHigh = highestHigh20 > 0 ? ((highestHigh20 - currentClose) / highestHigh20) * 100 : 0;
+
+    // Indicator Evaluations (Pass/Fail)
+    const passTrend = (currentClose >= (ema20 || 0) * 0.985) && (ema50 ? ema20 >= ema50 * 0.995 : true) && (ema50Slope >= -0.005);
+    const passRS = alpha20d >= 1.5;
+    const passRvol = rvol >= 1.5;
+    const passRSI = rsi >= 52 && rsi <= 76.5;
+    const passBreakout = breakout20.isBullishBreakout || distFrom20dHigh <= 1.5;
+    const passCLV = clv >= 0.60;
+    const passADX = adx >= 22;
+    const passSafety = distFromEma20 >= -1.5 && distFromEma20 <= 8.5 && stockReturn10d <= 0.18;
+
+    const indicators = [
+      {
+        id: 'trend',
+        name: 'Stage 2 Trend',
+        shortName: 'Trend',
+        criteria: 'Price >= 20 EMA and 20 EMA >= 50 EMA',
+        value: ema20 && ema50 ? `EMA20 > EMA50` : `EMA20: ₹${(ema20 || 0).toFixed(0)}`,
+        metric: `₹${(ema20 || 0).toFixed(0)} / ₹${(ema50 || 0).toFixed(0)}`,
+        passed: Boolean(passTrend)
+      },
+      {
+        id: 'rs',
+        name: 'Relative Strength',
+        shortName: 'RS Alpha',
+        criteria: 'Alpha >= +1.5% outperformance vs Nifty 50',
+        value: `${alpha20d >= 0 ? '+' : ''}${alpha20d.toFixed(1)}%`,
+        metric: `${alpha20d >= 0 ? '+' : ''}${alpha20d.toFixed(1)}% vs Nifty`,
+        passed: Boolean(passRS)
+      },
+      {
+        id: 'rvol',
+        name: 'Volume Surge',
+        shortName: 'RVOL',
+        criteria: 'Institutional volume >= 1.50x 20-day avg',
+        value: `${rvol.toFixed(1)}x`,
+        metric: `${rvol.toFixed(2)}x Vol`,
+        passed: Boolean(passRvol)
+      },
+      {
+        id: 'rsi',
+        name: 'RSI Momentum',
+        shortName: 'RSI',
+        criteria: 'RSI within sweet spot (52.0 - 76.5)',
+        value: `${rsi.toFixed(1)}`,
+        metric: `${rsi.toFixed(1)} RSI`,
+        passed: Boolean(passRSI)
+      },
+      {
+        id: 'breakout',
+        name: '20D Breakout',
+        shortName: 'Breakout',
+        criteria: 'New 20-day high or within 1.5% of resistance',
+        value: breakout20.isBullishBreakout ? 'New High' : `-${distFrom20dHigh.toFixed(1)}%`,
+        metric: breakout20.isBullishBreakout ? 'Breakout High!' : `${distFrom20dHigh.toFixed(1)}% to High`,
+        passed: Boolean(passBreakout)
+      },
+      {
+        id: 'clv',
+        name: 'CLV Pressure',
+        shortName: 'CLV',
+        criteria: 'Close Location Value >= 60% (upper candle range)',
+        value: `${(clv * 100).toFixed(0)}%`,
+        metric: `${(clv * 100).toFixed(0)}% Range`,
+        passed: Boolean(passCLV)
+      },
+      {
+        id: 'adx',
+        name: 'ADX Velocity',
+        shortName: 'ADX',
+        criteria: 'ADX >= 22.0 (Confirmed directional trend)',
+        value: `${adx.toFixed(1)}`,
+        metric: `${adx.toFixed(1)} ADX`,
+        passed: Boolean(passADX)
+      },
+      {
+        id: 'safety',
+        name: 'Extension Safety',
+        shortName: 'Safety',
+        criteria: '<= 8.5% above 20 EMA (No parabolic trap)',
+        value: `${distFromEma20 >= 0 ? '+' : ''}${distFromEma20.toFixed(1)}%`,
+        metric: `${distFromEma20 >= 0 ? '+' : ''}${distFromEma20.toFixed(1)}% from EMA20`,
+        passed: Boolean(passSafety)
+      }
+    ];
+
+    const passedCount = indicators.filter(i => i.passed).length;
+
+    // Confluence Score Calculation (0-100)
+    let score = 45;
+    if (breakout20.isBullishBreakout && passTrend && passRvol && passRSI && passCLV) {
+      score = 88;
+    } else if (passTrend && passBreakout && passRS) {
+      score = 76;
+    } else if (passTrend && (passRS || passRvol)) {
+      score = 65;
+    } else if (passTrend) {
+      score = 55;
+    }
+
+    // Add factor weights matching scanMarketCandidates
+    if (alpha20d >= 8.0) score += 9;
+    else if (alpha20d >= 4.0) score += 6;
+    else if (alpha20d >= 1.5) score += 3;
+    else if (alpha20d < 0) score -= 6;
+
+    if (rvol >= 3.0) score += 9;
+    else if (rvol >= 2.0) score += 6;
+    else if (rvol >= 1.5) score += 3;
+    else if (rvol < 0.9) score -= 5;
+
+    if (passTrend && ema20Slope > 0.05) score += 5;
+    if (clv >= 0.70) score += 4;
+    else if (clv < 0.45) score -= 4;
+
+    if (distFromEma20 >= 1.0 && distFromEma20 <= 7.5) score += 5;
+    else if (distFromEma20 > 11.0) score -= 6;
+
+    if (adx >= 25) score += 4;
+    if (dayChangePercent >= 1.4 && currentClose >= currentOpen) score += 4;
+
+    const algoScore = Math.max(15, Math.min(99, Math.round(score)));
+
+    let signal = 'WATCHLIST';
+    if (algoScore >= 88 && passedCount >= 6) signal = 'STRONG BUY';
+    else if (algoScore >= 75 && passedCount >= 5) signal = 'BUY SETUP';
+    else if (algoScore >= 60 && passedCount >= 4) signal = 'ACCUMULATE';
+    else if (!passTrend || algoScore < 45) signal = 'AVOID / WAIT';
+
+    // Execution Diagnostics: Why was this stock bought or not bought on this simulation date?
+    const exactBarOnDate = history.find(row => row.date === targetDate);
+    const latestAvailableBarDate = history[history.length - 1]?.date || 'N/A';
+    const activeHolding = (state.holdings || []).find(h => h.symbol === stock.symbol);
+    const holdingsCount = (state.holdings || []).length;
+    const maxPositions = state.config?.maxPositions || 12;
+
+    const sectorCounts = {};
+    for (const h of (state.holdings || [])) {
+      const sec = h.sector || 'Other';
+      sectorCounts[sec] = (sectorCounts[sec] || 0) + 1;
+    }
+
+    let executionStatus = {
+      status: 'WATCHLIST_PENDING',
+      label: 'Watchlist Setup',
+      reason: ''
+    };
+
+    if (!exactBarOnDate) {
+      executionStatus = {
+        status: 'NO_BAR_TODAY',
+        label: `Feed Missing (${latestAvailableBarDate})`,
+        reason: `No market bar received in data feed for ${targetDate} (latest bar is ${latestAvailableBarDate}). Live engine cannot execute orders without an active session bar.`
+      };
+    } else if (activeHolding) {
+      executionStatus = {
+        status: 'ACTIVE_HOLDING',
+        label: 'Currently Held',
+        reason: `Already actively held in portfolio since ${activeHolding.buyDate} (${(activeHolding.profitPercent || 0) >= 0 ? '+' : ''}${(activeHolding.profitPercent || 0).toFixed(1)}% P&L).`
+      };
+    } else if (holdingsCount >= maxPositions) {
+      executionStatus = {
+        status: 'PORTFOLIO_FULL',
+        label: 'Portfolio Full',
+        reason: `Trading desk is at full capacity (${holdingsCount}/${maxPositions} concurrent holdings). No available position slot.`
+      };
+    } else if ((sectorCounts[stock.sector] || 0) >= 1) {
+      const heldInSector = (state.holdings || []).find(h => h.sector === stock.sector);
+      executionStatus = {
+        status: 'SECTOR_CAP',
+        label: `Sector Cap (${stock.sector})`,
+        reason: `Portfolio already holds ${heldInSector ? heldInSector.symbol.replace('.NS', '') : 'a stock'} in ${stock.sector}. Strict risk limit enforces max 1 position per sector.`
+      };
+    } else {
+      // Evaluate strict Strategy 1 live execution criteria
+      const dayMove = prevClose > 0 ? (currentClose - prevClose) / prevClose : 0;
+      const isBreakout = breakout20.isBullishBreakout;
+      const isAboveEma20 = currentClose > ema20;
+      const isEmaAligned = ema50 ? ema20 >= ema50 * 0.995 : true;
+      const rsAlphaExcess = stockReturn20d - benchmarkReturn20d;
+      const isAlpha3 = rsAlphaExcess >= 0.03;
+      const isRvol175 = rvol >= 1.75;
+      const isRsiSweet = rsi >= 52 && rsi <= 76.5;
+      const isGreen = currentClose >= currentOpen;
+      const isClv64 = clv >= 0.64;
+      const isDayMove14 = dayMove >= 0.014;
+      const isExtSafe = currentClose <= ema20 * 1.08;
+      const is10dSafe = stockReturn10d <= 0.18;
+
+      if (isBreakout && isAboveEma20 && isEmaAligned && isAlpha3 && isRvol175 && isRsiSweet && isGreen && isClv64 && isDayMove14 && isExtSafe && is10dSafe) {
+        executionStatus = {
+          status: 'QUALIFIED_BUY',
+          label: 'Buy Trigger Met',
+          reason: 'Passed 100% of strict live execution triggers. Eligible for automated buy execution.'
+        };
+      } else {
+        if (!isBreakout) {
+          executionStatus = {
+            status: 'AWAITING_BREAKOUT',
+            label: 'Awaiting Breakout High',
+            reason: `Price is ${distFrom20dHigh.toFixed(1)}% below 20-day high (₹${highestHigh20.toFixed(1)}). Live execution requires a clean 20-day breakout close.`
+          };
+        } else if (!isClv64) {
+          executionStatus = {
+            status: 'CLV_REJECTION',
+            label: `CLV ${(clv * 100).toFixed(0)}% < 64%`,
+            reason: `Candle Close Location Value is ${(clv * 100).toFixed(1)}%. Live engine requires >= 64.0% to reject upper-wick selling pressure traps.`
+          };
+        } else if (!isRvol175) {
+          executionStatus = {
+            status: 'RVOL_INSUFFICIENT',
+            label: `RVOL ${rvol.toFixed(1)}x < 1.75x`,
+            reason: `Relative volume is ${rvol.toFixed(2)}x. Live engine requires >= 1.75x institutional volume surge to confirm big-money backing.`
+          };
+        } else if (!isDayMove14) {
+          executionStatus = {
+            status: 'DAY_MOVE_LOW',
+            label: `Move +${(dayMove * 100).toFixed(1)}% < 1.4%`,
+            reason: `Daily breakout candle expansion is +${(dayMove * 100).toFixed(1)}%. Live engine requires >= +1.4% expansion on breakout day.`
+          };
+        } else if (!isAlpha3) {
+          executionStatus = {
+            status: 'ALPHA_LOW',
+            label: `Alpha +${(rsAlphaExcess * 100).toFixed(1)}% < 3%`,
+            reason: `Relative Strength Alpha is +${(rsAlphaExcess * 100).toFixed(1)}% vs Nifty. Live engine requires >= +3.0% alpha for high-conviction swing leaders.`
+          };
+        } else if (!isGreen) {
+          executionStatus = {
+            status: 'RED_CANDLE',
+            label: 'Red Intraday Candle',
+            reason: 'Candle closed below open (Close < Open). Breakout day must be an expanding green candle.'
+          };
+        } else if (!isExtSafe) {
+          executionStatus = {
+            status: 'EXTENDED',
+            label: `Extended ${distFromEma20.toFixed(1)}% > 8%`,
+            reason: `Price is ${distFromEma20.toFixed(1)}% above 20 EMA. Live engine limits entry to <= 8.0% above 20 EMA to avoid chasing extended moves.`
+          };
+        } else {
+          executionStatus = {
+            status: 'STRICT_FILTER',
+            label: 'Execution Filter Pending',
+            reason: 'High-conviction watchlist setup, but did not meet live breakout entry rules.'
+          };
+        }
+      }
+    }
+
+    scoredStocks.push({
+      symbol: stock.symbol,
+      name: stock.name,
+      sector: stock.sector,
+      price: currentClose,
+      change: dayChange,
+      changePercent: dayChangePercent,
+      algoScore,
+      signal,
+      executionStatus,
+      passedCount,
+      totalIndicators: indicators.length,
+      indicators,
+      history: history.slice(Math.max(0, dayIdx - 20), dayIdx + 1)
+    });
+  }
+
+  // Sort by algoScore descending, then by passedCount, then by RVOL
+  scoredStocks.sort((a, b) => {
+    if (b.algoScore !== a.algoScore) return b.algoScore - a.algoScore;
+    if (b.passedCount !== a.passedCount) return b.passedCount - a.passedCount;
+    return b.changePercent - a.changePercent;
+  });
+
+  const top25 = scoredStocks.slice(0, 25).map((item, idx) => ({
+    ...item,
+    rank: idx + 1
+  }));
+
+  return {
+    date: targetDate,
+    marketRegime: marketRegime.regime,
+    totalScanned: scoredStocks.length,
+    top25
+  };
+}
+
 // Re-evaluate all open holdings against current config targets using the last known price.
 // Called immediately after a config change so new profit/stop targets take effect without
 // needing to wait for the next trading day simulation.
@@ -1632,5 +2012,6 @@ module.exports = {
   getWatchlistQuotes,
   evaluateMarketRegime,
   scanMarketCandidates,
+  getTop25AlgoRankings,
   updateCache
 };
