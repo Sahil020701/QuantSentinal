@@ -1,25 +1,73 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import MiniChart from './MiniChart';
+
+// ── Time-range definitions ──────────────────────────────────────────────────
+const RANGES = [
+  { label: '1D',  days: 1 },
+  { label: '1W',  days: 7 },
+  { label: '1M',  days: 30 },
+  { label: '3M',  days: 90 },
+  { label: '6M',  days: 180 },
+  { label: 'YTD', days: null, ytd: true },
+  { label: '1Y',  days: 365 },
+  { label: 'All', days: null },
+];
+
+function filterByRange(history, range) {
+  if (!history || history.length === 0) return history;
+  if (range.days === null && !range.ytd) return history; // All / Since Inception
+
+  const now = new Date();
+  let cutoff;
+
+  if (range.ytd) {
+    cutoff = new Date(now.getFullYear(), 0, 1); // Jan 1 of current year
+  } else {
+    cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - range.days);
+  }
+
+  const filtered = history.filter(item => {
+    const d = new Date(item.date);
+    return !isNaN(d) && d >= cutoff;
+  });
+
+  // Always return at least one data point
+  return filtered.length > 0 ? filtered : history.slice(-1);
+}
 
 export default function DashboardTab({ portfolio }) {
   const { cash, holdings, valuationHistory } = portfolio;
+  const [activeRange, setActiveRange] = useState('All');
 
   // Latest valuation details
   const latestValuation = valuationHistory[valuationHistory.length - 1] || {
     totalValue: 50000.0,
     profitPercent: 0.0,
     totalDeposited: 50000.0,
-    holdingsValue: 0.0
+    holdingsValue: 0.0,
   };
 
-  const totalValue = latestValuation.totalValue;
-  const holdingsValue = latestValuation.holdingsValue || 0;
-  const profitPercent = latestValuation.profitPercent || 0;
+  const totalValue     = latestValuation.totalValue;
+  const holdingsValue  = latestValuation.holdingsValue || 0;
+  const profitPercent  = latestValuation.profitPercent || 0;
   const totalDeposited = latestValuation.totalDeposited || 50000.0;
-  const netProfit = totalValue - totalDeposited;
+  const netProfit      = totalValue - totalDeposited;
+  const activeCount    = holdings.length;
 
-  // Active positions statistics
-  const activeCount = holdings.length;
+  // ── Filtered chart data ─────────────────────────────────────────────────
+  const selectedRange = RANGES.find(r => r.label === activeRange) || RANGES[RANGES.length - 1];
+  const filteredHistory = useMemo(
+    () => filterByRange(valuationHistory, selectedRange),
+    [valuationHistory, selectedRange]
+  );
+
+  // Period-level performance
+  const periodStart = filteredHistory[0]?.totalValue ?? totalValue;
+  const periodEnd   = filteredHistory[filteredHistory.length - 1]?.totalValue ?? totalValue;
+  const periodChange    = periodEnd - periodStart;
+  const periodChangePct = periodStart !== 0 ? (periodChange / periodStart) * 100 : 0;
+  const periodIsUp      = periodChange >= 0;
 
   return (
     <div className="tab-content">
@@ -62,19 +110,110 @@ export default function DashboardTab({ portfolio }) {
       <div className="grid-2col">
         {/* Growth Chart */}
         <div className="glass-panel">
-          <div className="panel-header">
-            <h2>Portfolio Net Worth</h2>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Deposited Capital: ₹{totalDeposited.toLocaleString('en-IN')}
+          {/* Chart Header */}
+          <div className="panel-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                Portfolio Net Worth
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px',
+                  borderRadius: '20px', background: 'rgba(22,163,74,0.12)',
+                  color: '#16a34a', border: '1px solid rgba(22,163,74,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '4px'
+                }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%', background: '#16a34a',
+                    display: 'inline-block', animation: 'pulse 2s infinite'
+                  }} />
+                  LIVE
+                </span>
+              </h2>
+              {/* Period performance pill */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{
+                  fontSize: '0.82rem', fontWeight: 700,
+                  color: periodIsUp ? '#16a34a' : '#dc2626'
+                }}>
+                  {periodIsUp ? '▲ +' : '▼ '}₹{Math.abs(periodChange).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <span style={{
+                  fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                  background: periodIsUp ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)',
+                  color: periodIsUp ? '#16a34a' : '#dc2626',
+                  border: `1px solid ${periodIsUp ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.25)'}`,
+                }}>
+                  {periodIsUp ? '+' : ''}{periodChangePct.toFixed(2)}%
+                </span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  {activeRange === 'All' ? 'Since Inception' : `Past ${activeRange}`}
+                </span>
+              </div>
+            </div>
+
+            {/* Time Range Buttons */}
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              {RANGES.map(r => (
+                <button
+                  key={r.label}
+                  onClick={() => setActiveRange(r.label)}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: activeRange === r.label
+                      ? '1px solid var(--accent)'
+                      : '1px solid var(--border-color)',
+                    background: activeRange === r.label
+                      ? 'var(--accent)'
+                      : 'transparent',
+                    color: activeRange === r.label
+                      ? '#ffffff'
+                      : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => {
+                    if (activeRange !== r.label) {
+                      e.currentTarget.style.borderColor = 'var(--accent)';
+                      e.currentTarget.style.color = 'var(--accent)';
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (activeRange !== r.label) {
+                      e.currentTarget.style.borderColor = 'var(--border-color)';
+                      e.currentTarget.style.color = 'var(--text-secondary)';
+                    }
+                  }}
+                >
+                  {r.label === 'All' ? 'Since Inception' : r.label}
+                </button>
+              ))}
             </div>
           </div>
-          <div style={{ height: '300px' }}>
-            <MiniChart 
-              data={valuationHistory} 
-              valueKey="totalValue" 
+
+          {/* Chart */}
+          <div style={{ height: '300px', marginTop: '0.25rem' }}>
+            <MiniChart
+              data={filteredHistory}
+              valueKey="totalValue"
               dateKey="date"
               fillGradId="netWorthGrad"
+              baselineValue={totalDeposited}
             />
+          </div>
+
+          {/* Bottom meta row */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginTop: '0.75rem', paddingTop: '0.75rem',
+            borderTop: '1px solid var(--border-color)',
+            fontSize: '0.75rem', color: 'var(--text-secondary)'
+          }}>
+            <span>Invested Capital: <strong style={{ color: 'var(--text-primary)' }}>₹{totalDeposited.toLocaleString('en-IN')}</strong></span>
+            <span>Data Points: <strong style={{ color: 'var(--text-primary)' }}>{filteredHistory.length}</strong></span>
+            <span>Last Updated: <strong style={{ color: 'var(--accent)' }}>{portfolio.lastSimulationDate}</strong></span>
           </div>
         </div>
 
@@ -133,7 +272,7 @@ export default function DashboardTab({ portfolio }) {
                   <th>Entry Price</th>
                   <th>Current Price</th>
                   <th>Value</th>
-                  <th>Returns (P&L)</th>
+                  <th>Returns (P&amp;L)</th>
                   <th>SL / Target Progress</th>
                 </tr>
               </thead>
@@ -169,10 +308,10 @@ export default function DashboardTab({ portfolio }) {
                         <div className="sl-target-track">
                           <div style={{ position: 'relative', width: '120px', height: '6px', background: '#1e293b', borderRadius: '3px' }}>
                             {/* Marker line showing current price position */}
-                            <div 
-                              style={{ 
-                                position: 'absolute', 
-                                left: `${progressOffset}%`, 
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: `${progressOffset}%`,
                                 top: '-3px',
                                 width: '4px',
                                 height: '12px',
@@ -183,13 +322,13 @@ export default function DashboardTab({ portfolio }) {
                               }}
                             />
                             {/* Gradient colors showing Stop Loss (red) -> Entry (blue) -> Target (green) */}
-                            <div 
-                              style={{ 
-                                position: 'absolute', 
-                                left: '0', 
-                                top: '0', 
-                                height: '100%', 
-                                width: '100%', 
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: '0',
+                                top: '0',
+                                height: '100%',
+                                width: '100%',
                                 background: 'linear-gradient(to right, rgba(220, 38, 38, 0.4) 0%, rgba(37, 99, 235, 0.2) 50%, rgba(22, 163, 74, 0.4) 100%)',
                                 borderRadius: '3px'
                               }}
@@ -212,3 +351,4 @@ export default function DashboardTab({ portfolio }) {
     </div>
   );
 }
+

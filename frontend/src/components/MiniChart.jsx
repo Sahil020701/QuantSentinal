@@ -1,15 +1,16 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 /**
- * Interactive SVG Line Chart
+ * Interactive SVG Line Chart — Enhanced
  * @param {Array} data - Array of data points (numbers or {date, value} objects)
  * @param {string} valueKey - Key for value in object, if data is array of objects
  * @param {string} dateKey - Key for date in object, if data is array of objects
  * @param {boolean} showPoints - Highlight points with circles
  * @param {boolean} showTooltip - Show tooltip on hover
- * @param {string} strokeColor - Hex/CSS color for the line
+ * @param {string} strokeColor - Hex/CSS color for the line (auto-overridden by period performance)
  * @param {string} fillGradId - ID of gradient to use
  * @param {string} valuePrefix - Symbol prefix (e.g. ₹)
+ * @param {number} baselineValue - Optional baseline (e.g. deposited capital) for reference line
  */
 export default function MiniChart({
   data = [],
@@ -17,234 +18,253 @@ export default function MiniChart({
   dateKey = 'date',
   showPoints = true,
   showTooltip = true,
-  strokeColor = '#00f0ff',
+  strokeColor = '#2563eb',
   fillGradId = 'chartGrad',
-  valuePrefix = '₹'
+  valuePrefix = '₹',
+  baselineValue = null,
 }) {
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [animated, setAnimated] = useState(false);
   const containerRef = useRef(null);
+
+  // Trigger line-draw animation whenever data changes
+  useEffect(() => {
+    setAnimated(false);
+    const id = setTimeout(() => setAnimated(true), 30);
+    return () => clearTimeout(id);
+  }, [data]);
 
   if (!data || data.length === 0) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#64748b', fontSize: '0.85rem' }}>
-        No historical price data available
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#94a3b8', fontSize: '0.85rem' }}>
+        No historical data for selected period
       </div>
     );
   }
 
   // Extract values and labels
   const values = data.map(item => (typeof item === 'object' ? item[valueKey] : item));
-  const dates = data.map(item => (typeof item === 'object' ? item[dateKey] : ''));
+  const dates  = data.map(item => (typeof item === 'object' ? item[dateKey]  : ''));
 
   const minVal = Math.min(...values);
   const maxVal = Math.max(...values);
   const valRange = maxVal - minVal || 1;
-  const paddingPercent = 0.1; // 10% padding above/below data range
-  const adjustedMin = Math.max(0, minVal - valRange * paddingPercent);
-  const adjustedMax = maxVal + valRange * paddingPercent;
+  const padPct = 0.12;
+  const adjustedMin   = Math.max(0, minVal - valRange * padPct);
+  const adjustedMax   = maxVal + valRange * padPct;
   const adjustedRange = adjustedMax - adjustedMin;
 
-  // Chart coordinate layout
-  const width = 500;
-  const height = 240;
-  const paddingX = 40;
-  const paddingY = 20;
-  
-  const chartWidth = width - paddingX * 2;
-  const chartHeight = height - paddingY * 2;
+  // SVG canvas dimensions
+  const width        = 600;
+  const height       = 260;
+  const paddingX     = 58;
+  const paddingY     = 24;
+  const paddingBot   = 34;
+  const chartWidth   = width  - paddingX * 2;
+  const chartHeight  = height - paddingY - paddingBot;
 
-  // Map values to coordinates
-  const points = values.map((val, i) => {
-    const x = paddingX + (i / (values.length - 1 || 1)) * chartWidth;
-    const y = paddingY + chartHeight - ((val - adjustedMin) / adjustedRange) * chartHeight;
-    return { x, y, val, date: dates[i] };
-  });
+  // Map data to SVG coordinates
+  const points = values.map((val, i) => ({
+    x: paddingX + (i / (values.length - 1 || 1)) * chartWidth,
+    y: paddingY + chartHeight - ((val - adjustedMin) / adjustedRange) * chartHeight,
+    val,
+    date: dates[i],
+  }));
 
-  // Build SVG path
-  let pathD = '';
-  if (points.length > 0) {
-    pathD = `M ${points[0].x} ${points[0].y}`;
-    for (let i = 1; i < points.length; i++) {
-      // Linear connection
-      pathD += ` L ${points[i].x} ${points[i].y}`;
+  // Smooth cubic-bezier path
+  const buildBezierPath = (pts) => {
+    if (!pts.length) return '';
+    if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+    let d = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 1; i < pts.length; i++) {
+      const cpX = (pts[i - 1].x + pts[i].x) / 2;
+      d += ` C ${cpX} ${pts[i - 1].y} ${cpX} ${pts[i].y} ${pts[i].x} ${pts[i].y}`;
     }
+    return d;
+  };
+
+  const pathD = buildBezierPath(points);
+  const areaD = pathD
+    ? `${pathD} L ${points[points.length - 1].x} ${height - paddingBot} L ${points[0].x} ${height - paddingBot} Z`
+    : '';
+
+  // Color based on period performance
+  const isPositive = values[values.length - 1] >= values[0];
+  const lineColor  = isPositive ? '#16a34a' : '#dc2626';
+  const gradId     = `${fillGradId}_area`;
+  const clipId     = `${fillGradId}_clip`;
+
+  // Baseline Y coordinate (e.g. deposited capital reference)
+  let baselineY = null;
+  if (baselineValue !== null) {
+    baselineY = paddingY + chartHeight - ((baselineValue - adjustedMin) / adjustedRange) * chartHeight;
+    baselineY = Math.max(paddingY, Math.min(height - paddingBot, baselineY));
   }
 
-  // Build Area path (for fill gradient underneath the line)
-  let areaD = '';
-  if (points.length > 0) {
-    areaD = `${pathD} L ${points[points.length - 1].x} ${height - paddingY} L ${points[0].x} ${height - paddingY} Z`;
-  }
-
-  // Handle Mouse Hover
+  // Mouse handling
   const handleMouseMove = (e) => {
-    if (!containerRef.current || points.length === 0) return;
+    if (!containerRef.current || !points.length) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    
-    // Scale factor between SVG coordinate system (500x240) and actual DOM element width
-    const scaleX = width / rect.width;
-    const svgMouseX = mouseX * scaleX;
-
-    // Find closest point by X coordinate
-    let closestIdx = 0;
-    let minDist = Math.abs(points[0].x - svgMouseX);
-
-    for (let i = 1; i < points.length; i++) {
-      const dist = Math.abs(points[i].x - svgMouseX);
-      if (dist < minDist) {
-        minDist = dist;
-        closestIdx = i;
-      }
-    }
-
-    setHoveredIdx(closestIdx);
-
-    // Position tooltip relative to container (in DOM pixels)
-    const activePoint = points[closestIdx];
-    const domX = (activePoint.x / width) * rect.width;
-    const domY = (activePoint.y / height) * rect.height;
-
+    const svgMouseX = ((e.clientX - rect.left) / rect.width) * width;
+    let ci = 0, md = Infinity;
+    points.forEach((p, i) => {
+      const d = Math.abs(p.x - svgMouseX);
+      if (d < md) { md = d; ci = i; }
+    });
+    setHoveredIdx(ci);
+    const ap = points[ci];
     setTooltipPos({
-      x: domX,
-      y: domY - 45
+      x: (ap.x / width) * rect.width,
+      y: (ap.y / height) * rect.height - 58,
     });
   };
+  const handleMouseLeave = () => setHoveredIdx(null);
 
-  const handleMouseLeave = () => {
-    setHoveredIdx(null);
+  // Y-axis grid labels (abbreviated)
+  const formatY = (v) => {
+    if (v >= 10000000) return `${(v / 10000000).toFixed(1)}Cr`;
+    if (v >= 100000)   return `${(v / 100000).toFixed(1)}L`;
+    if (v >= 1000)     return `${(v / 1000).toFixed(1)}K`;
+    return Math.round(v).toString();
   };
+  const gridLines = Array.from({ length: 5 }, (_, i) => {
+    const ratio  = i / 4;
+    return {
+      yCoord: paddingY + chartHeight - ratio * chartHeight,
+      yVal:   adjustedMin + ratio * adjustedRange,
+    };
+  });
 
-  // Gridlines values
-  const yTicks = 4;
-  const gridLines = [];
-  for (let i = 0; i < yTicks; i++) {
-    const ratio = i / (yTicks - 1);
-    const yVal = adjustedMin + ratio * adjustedRange;
-    const yCoord = paddingY + chartHeight - ratio * chartHeight;
-    gridLines.push({ yCoord, yVal });
-  }
+  // X-axis labels (up to 5 spread evenly)
+  const xCount  = Math.min(5, dates.length);
+  const xLabels = dates.length > 1
+    ? Array.from({ length: xCount }, (_, i) => {
+        const idx = Math.round((i / (xCount - 1)) * (dates.length - 1));
+        return { x: points[idx].x, label: dates[idx], anchor: i === 0 ? 'start' : i === xCount - 1 ? 'end' : 'middle' };
+      })
+    : [];
 
   return (
-    <div 
-      className="chart-container" 
+    <div
+      className="chart-container"
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
-      <svg 
-        viewBox={`0 0 ${width} ${height}`} 
-        className="chart-svg" 
-        style={{ width: '100%', height: '100%', display: 'block' }}
-      >
+      <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg" style={{ width: '100%', height: '100%', display: 'block' }}>
         <defs>
-          <linearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" className="chart-gradient-stop-1" />
-            <stop offset="100%" className="chart-gradient-stop-2" />
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={lineColor} stopOpacity="0.2" />
+            <stop offset="70%"  stopColor={lineColor} stopOpacity="0.05" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
           </linearGradient>
+          {/* Animated reveal clip */}
+          <clipPath id={clipId}>
+            <rect
+              x={paddingX} y={0}
+              width={animated ? chartWidth : 0}
+              height={height}
+              style={{ transition: animated ? 'width 0.85s cubic-bezier(0.4,0,0.2,1)' : 'none' }}
+            />
+          </clipPath>
         </defs>
 
-        {/* Horizontal Grid lines */}
-        {gridLines.map((line, idx) => (
-          <g key={idx}>
-            <line 
-              x1={paddingX} 
-              y1={line.yCoord} 
-              x2={width - paddingX} 
-              y2={line.yCoord} 
-              className="chart-grid-line" 
+        {/* Horizontal grid lines + Y labels */}
+        {gridLines.map((gl, i) => (
+          <g key={i}>
+            <line
+              x1={paddingX} y1={gl.yCoord}
+              x2={width - paddingX} y2={gl.yCoord}
+              stroke="rgba(15,23,42,0.06)"
+              strokeWidth="1"
+              strokeDasharray={i === 0 ? '0' : '3 5'}
             />
-            {/* Axis labels */}
-            <text 
-              x={paddingX - 8} 
-              y={line.yCoord + 3} 
-              textAnchor="end" 
-              fill="#64748b" 
-              fontSize="9"
-              fontWeight="500"
-            >
-              {valuePrefix}{Math.round(line.yVal).toLocaleString('en-IN')}
+            <text x={paddingX - 7} y={gl.yCoord + 4} textAnchor="end"
+              fill="#94a3b8" fontSize="9" fontWeight="500" fontFamily="inherit">
+              {valuePrefix}{formatY(gl.yVal)}
             </text>
           </g>
         ))}
 
-        {/* X Axis Date labels (start, mid, end) */}
-        {dates.length > 1 && (
-          <>
-            <text x={paddingX} y={height - 4} textAnchor="start" fill="#64748b" fontSize="9" fontWeight="500">
-              {dates[0]}
-            </text>
-            <text x={width / 2} y={height - 4} textAnchor="middle" fill="#64748b" fontSize="9" fontWeight="500">
-              {dates[Math.floor(dates.length / 2)]}
-            </text>
-            <text x={width - paddingX} y={height - 4} textAnchor="end" fill="#64748b" fontSize="9" fontWeight="500">
-              {dates[dates.length - 1]}
-            </text>
-          </>
+        {/* X-axis date labels */}
+        {xLabels.map((xl, i) => (
+          <text key={i} x={xl.x} y={height - 10}
+            textAnchor={xl.anchor} fill="#94a3b8" fontSize="9" fontWeight="500" fontFamily="inherit">
+            {xl.label}
+          </text>
+        ))}
+
+        {/* X-axis bottom border */}
+        <line x1={paddingX} y1={height - paddingBot} x2={width - paddingX} y2={height - paddingBot}
+          stroke="rgba(15,23,42,0.07)" strokeWidth="1" />
+
+        {/* Baseline (deposited capital) reference */}
+        {baselineY !== null && (
+          <g>
+            <line x1={paddingX} y1={baselineY} x2={width - paddingX} y2={baselineY}
+              stroke="rgba(100,116,139,0.45)" strokeWidth="1" strokeDasharray="5 4" />
+            <text x={paddingX + 4} y={baselineY - 5}
+              fill="#94a3b8" fontSize="8.5" fontWeight="600" fontFamily="inherit">Invested Capital</text>
+          </g>
         )}
 
-        {/* Fill Area */}
-        {areaD && (
-          <path d={areaD} fill={`url(#${fillGradId})`} />
-        )}
+        {/* Fill area */}
+        {areaD && <path d={areaD} fill={`url(#${gradId})`} clipPath={`url(#${clipId})`} />}
 
-        {/* Sparkline path */}
+        {/* Chart line */}
         {pathD && (
-          <path 
-            d={pathD} 
-            className="chart-line" 
-            stroke={strokeColor} 
+          <path d={pathD} fill="none"
+            stroke={lineColor} strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round"
+            style={{ filter: `drop-shadow(0 2px 8px ${lineColor}55)` }}
+            clipPath={`url(#${clipId})`}
           />
         )}
 
-        {/* Highlight points on hover */}
+        {/* Small dots on hover or sparse data */}
         {showPoints && points.map((p, idx) => (
-          <circle
-            key={idx}
-            cx={p.x}
-            cy={p.y}
-            r={hoveredIdx === idx ? 6 : (points.length < 30 ? 2.5 : 0)}
-            className="chart-point"
-            style={{ 
-              fill: hoveredIdx === idx ? strokeColor : 'var(--bg-main)',
-              stroke: strokeColor,
-              strokeWidth: 2
-            }}
+          <circle key={idx} cx={p.x} cy={p.y}
+            r={hoveredIdx === idx ? 0 : (points.length < 40 ? 2 : 0)}
+            fill="white" stroke={lineColor} strokeWidth="1.5"
+            style={{ transition: 'r 0.1s' }}
           />
         ))}
 
-        {/* Active Hover vertical guide line */}
+        {/* Hover crosshair */}
         {hoveredIdx !== null && (
-          <line
-            x1={points[hoveredIdx].x}
-            y1={paddingY}
-            x2={points[hoveredIdx].x}
-            y2={height - paddingY}
-            stroke="var(--border-color)"
-            strokeDasharray="4 4"
-            strokeWidth="1.5"
-          />
+          <g>
+            <line x1={points[hoveredIdx].x} y1={paddingY}
+              x2={points[hoveredIdx].x} y2={height - paddingBot}
+              stroke="rgba(15,23,42,0.1)" strokeWidth="1.5" strokeDasharray="4 3" />
+            <circle cx={points[hoveredIdx].x} cy={points[hoveredIdx].y}
+              r="9" fill={lineColor} fillOpacity="0.12" />
+            <circle cx={points[hoveredIdx].x} cy={points[hoveredIdx].y}
+              r="4.5" fill={lineColor} stroke="white" strokeWidth="2" />
+          </g>
         )}
       </svg>
 
-      {/* Floating HTML Tooltip */}
-      {showTooltip && hoveredIdx !== null && (
-        <div 
-          className="chart-tooltip"
-          style={{
-            left: `${tooltipPos.x}px`,
-            top: `${tooltipPos.y}px`,
-            transform: 'translateX(-50%)',
-          }}
-        >
-          <span className="chart-tooltip-date">{points[hoveredIdx].date}</span>
-          <span className="chart-tooltip-val">
-            {valuePrefix}{points[hoveredIdx].val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        </div>
-      )}
+      {/* Tooltip */}
+      {showTooltip && hoveredIdx !== null && (() => {
+        const pt  = points[hoveredIdx];
+        const chg = pt.val - values[0];
+        const pct = values[0] ? (chg / values[0]) * 100 : 0;
+        const up  = chg >= 0;
+        return (
+          <div className="chart-tooltip"
+            style={{ left: `${tooltipPos.x}px`, top: `${tooltipPos.y}px`, transform: 'translateX(-50%)' }}>
+            <span className="chart-tooltip-date">{pt.date}</span>
+            <span className="chart-tooltip-val">
+              {valuePrefix}{pt.val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: up ? '#16a34a' : '#dc2626' }}>
+              {up ? '▲ +' : '▼ '}{pct.toFixed(2)}% vs period start
+            </span>
+          </div>
+        );
+      })()}
     </div>
   );
 }
