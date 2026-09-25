@@ -43,15 +43,18 @@ function getLatestTradingDateIST() {
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 
   // Market is "done for today" only on Mon-Fri after 15:30 IST
-  const marketSessionComplete = (dayOfWeek >= 1 && dayOfWeek <= 5 && istHHMM >= 1530);
-
-  if (marketSessionComplete) {
+  if (dayOfWeek >= 1 && dayOfWeek <= 5 && istHHMM >= 1530) {
     return toDateStr(istNow); // today's IST date — session has closed
   }
 
-  // Step back one calendar day to find the last completed session date
-  const yesterday = new Date(istNow.getTime() - 24 * 60 * 60 * 1000);
-  return toDateStr(yesterday);
+  // Step back to the most recent completed weekday:
+  let daysBack = 1;
+  if (dayOfWeek === 6) daysBack = 1; // Sat -> Fri
+  else if (dayOfWeek === 0) daysBack = 2; // Sun -> Fri
+  else if (dayOfWeek === 1 && istHHMM < 1530) daysBack = 3; // Mon morning -> Fri
+
+  const lastCompleted = new Date(istNow.getTime() - daysBack * 24 * 60 * 60 * 1000);
+  return toDateStr(lastCompleted);
 }
 
 // Backwards-compatible alias used throughout server routes
@@ -93,10 +96,11 @@ app.get('/api/scanner', async (req, res) => {
 // GET Top Algo Rankings with Indicator Pass/Fail Breakdown
 app.get('/api/algo-top25', async (req, res) => {
   try {
-    const { date, limit } = req.query;
+    const { date, limit, refresh } = req.query;
     const todayStr = getTodayUTCDateString();
     const targetDate = date || todayStr;
-    const data = await getTop25AlgoRankings(targetDate);
+    const forceRefresh = refresh === 'true' || refresh === '1';
+    const data = await getTop25AlgoRankings(targetDate, forceRefresh);
     if (limit && limit !== 'all' && limit !== 'ALL') {
       const numLimit = parseInt(limit, 10);
       if (!isNaN(numLimit) && numLimit > 0) {

@@ -187,22 +187,45 @@ function formatUTCDate(date) {
 
 let activeUpdatePromise = null;
 
+function hasBarForDate(dataObj, targetDate) {
+  if (!dataObj || typeof dataObj !== 'object') return false;
+  if (!targetDate) return true;
+  const testSymbols = ['RELIANCE.NS', 'NIFTYBEES.NS', '^NSEI', 'HDFCBANK.NS', 'TCS.NS', 'INFY.NS'];
+  for (const sym of testSymbols) {
+    const bars = dataObj[sym];
+    if (bars && Array.isArray(bars) && bars.length > 0) {
+      const lastBarDate = bars[bars.length - 1].date;
+      return lastBarDate >= targetDate;
+    }
+  }
+  return false;
+}
+
 // Fetch and Store Yahoo Finance Data via Python yfinance helper script into in-memory runtime cache
 async function updateCache(endDateStr, forceRefresh = false) {
   const todayStr = formatUTCDate(new Date());
 
-  // 1. Check in-memory market data first
-  if (inMemoryMarketData && inMemoryMarketData.lastUpdated === todayStr && inMemoryMarketData.data && Object.keys(inMemoryMarketData.data).length > 0) {
-    if (!forceRefresh) {
-      return inMemoryMarketData.data;
-    }
+  // 1. Check in-memory market data first (ensure it contains the target bar)
+  if (
+    !forceRefresh &&
+    inMemoryMarketData &&
+    inMemoryMarketData.data &&
+    Object.keys(inMemoryMarketData.data).length > 0 &&
+    hasBarForDate(inMemoryMarketData.data, endDateStr)
+  ) {
+    return inMemoryMarketData.data;
   }
 
-  // 2. Check MongoDB MarketData collection before running Python fetch
+  // 2. Check MongoDB MarketData collection before running Python fetch (ensure it contains target bar)
   if (!forceRefresh && mongoose.connection && mongoose.connection.readyState === 1) {
     try {
       const doc = await MarketDataModel.findOne({ key: 'daily_bars' }).lean();
-      if (doc && doc.data && Object.keys(doc.data).length > 0) {
+      if (
+        doc &&
+        doc.data &&
+        Object.keys(doc.data).length > 0 &&
+        hasBarForDate(doc.data, endDateStr)
+      ) {
         inMemoryMarketData = doc;
         if (doc.watchlist && Array.isArray(doc.watchlist) && doc.watchlist.length > 0) {
           WATCHLIST.length = 0;
@@ -1304,7 +1327,7 @@ async function getWatchlistQuotes(endDateStr) {
 
 // Scan and rank entire stock universe using algorithmic multi-factor criteria.
 // Returns Top 25 stocks along with each indicator and pass/fail boolean status.
-async function getTop25AlgoRankings(simDate) {
+async function getTop25AlgoRankings(simDate, forceRefresh = false) {
   let state;
   try {
     state = await loadState();
@@ -1314,10 +1337,10 @@ async function getTop25AlgoRankings(simDate) {
 
   let targetDate = simDate;
   if (!targetDate || targetDate === 'today') {
-    targetDate = state.lastSimulationDate || formatUTCDate(new Date());
+    targetDate = formatUTCDate(new Date());
   }
 
-  const cachedData = await updateCache(targetDate);
+  const cachedData = await updateCache(targetDate, forceRefresh);
   const marketRegime = evaluateMarketRegime(targetDate, cachedData);
 
   // Benchmark return over last 20 sessions (Nifty 50 or fallback)
