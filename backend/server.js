@@ -90,16 +90,22 @@ app.get('/api/scanner', async (req, res) => {
   }
 });
 
-// GET Top 25 Algo Rankings with Indicator Pass/Fail Breakdown
+// GET Top Algo Rankings with Indicator Pass/Fail Breakdown
 app.get('/api/algo-top25', async (req, res) => {
   try {
-    const { date } = req.query;
+    const { date, limit } = req.query;
     const todayStr = getTodayUTCDateString();
     const targetDate = date || todayStr;
     const data = await getTop25AlgoRankings(targetDate);
+    if (limit && limit !== 'all' && limit !== 'ALL') {
+      const numLimit = parseInt(limit, 10);
+      if (!isNaN(numLimit) && numLimit > 0) {
+        data.rankings = (data.rankings || data.top25).slice(0, numLimit);
+      }
+    }
     res.json(data);
   } catch (error) {
-    console.error("Error fetching top 25 algo rankings:", error);
+    console.error("Error fetching algo rankings:", error);
     res.status(500).json({ error: "Failed to load algorithm rankings", details: error.message });
   }
 });

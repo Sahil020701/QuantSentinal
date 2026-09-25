@@ -10,6 +10,7 @@ export default function AlgoTop25Tab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
   const [minPassed, setMinPassed] = useState('ALL');
+  const [displayLimit, setDisplayLimit] = useState(25);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
   const [inspectStock, setInspectStock] = useState(null);
 
@@ -21,13 +22,13 @@ export default function AlgoTop25Tab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/algo-top25`);
+      const res = await fetch(`${API_URL}/api/algo-top25?limit=all`);
       if (!res.ok) throw new Error("Failed to load algorithm rankings");
       const json = await res.json();
       setData(json);
     } catch (err) {
       console.error(err);
-      setError("Could not load Top 25 algorithm candidates. Ensure backend is running.");
+      setError("Could not load algorithm candidates. Ensure backend is running.");
     } finally {
       setLoading(false);
     }
@@ -55,13 +56,26 @@ export default function AlgoTop25Tab() {
     );
   }
 
-  const { date, marketRegime, totalScanned, top25 = [] } = data;
+  const { date, marketRegime, totalScanned = 0, top25 = [], rankings } = data;
+  const allCandidates = (rankings && rankings.length > 0) ? rankings : top25;
 
-  // Unique sectors for filtering
-  const sectors = ['ALL', ...new Set(top25.map(s => s.sector).filter(Boolean))];
+  // Generate dynamic step-up options: 25, 50, 75, ... up to total available assets, then 'ALL'
+  const limitOptions = [];
+  const maxPool = allCandidates.length || totalScanned || 25;
+  for (let step = 25; step < maxPool; step += 25) {
+    limitOptions.push(step);
+  }
+  limitOptions.push('ALL');
+
+  const displayedPool = displayLimit === 'ALL'
+    ? allCandidates
+    : allCandidates.slice(0, Number(displayLimit) || 25);
+
+  // Unique sectors for filtering (derived from all candidates)
+  const sectors = ['ALL', ...new Set(allCandidates.map(s => s.sector).filter(Boolean))];
 
   // Filtering
-  const filteredStocks = top25.filter(stock => {
+  const filteredStocks = displayedPool.filter(stock => {
     const matchesSearch =
       stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
       stock.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -169,7 +183,7 @@ export default function AlgoTop25Tab() {
         <div className="panel-header" style={{ borderBottom: 'none', paddingBottom: '0.75rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <h2>Top 25 Algo Candidates</h2>
+              <h2>{displayLimit === 'ALL' ? `All Algo Candidates (${allCandidates.length})` : `Top ${displayLimit} Algo Candidates`}</h2>
               <span style={{
                 fontSize: '0.75rem',
                 padding: '0.2rem 0.6rem',
@@ -252,6 +266,23 @@ export default function AlgoTop25Tab() {
             </select>
           </div>
 
+          {/* Configurable Limit Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show:</span>
+            <select
+              value={displayLimit}
+              onChange={(e) => setDisplayLimit(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+              className="config-select"
+              style={{ fontSize: '0.8rem', padding: '0.45rem 0.75rem', fontWeight: '600', color: 'var(--accent)' }}
+            >
+              {limitOptions.map(opt => (
+                <option key={opt} value={opt}>
+                  {opt === 'ALL' ? `All (${allCandidates.length})` : `Top ${opt}`}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Minimum Passed filter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Passed:</span>
@@ -261,7 +292,7 @@ export default function AlgoTop25Tab() {
               className="config-select"
               style={{ fontSize: '0.8rem', padding: '0.45rem 0.75rem' }}
             >
-              <option value="ALL">All (Top 25)</option>
+              <option value="ALL">All {displayLimit === 'ALL' ? 'Assets' : `(Top ${displayLimit})`}</option>
               <option value="8">8 / 8 Clean Sweep</option>
               <option value="7+">7+ Indicators Passed</option>
               <option value="6+">6+ Indicators Passed</option>

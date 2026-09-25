@@ -1682,7 +1682,7 @@ async function getTop25AlgoRankings(simDate) {
     return b.changePercent - a.changePercent;
   });
 
-  const top25 = scoredStocks.slice(0, 25).map((item, idx) => ({
+  const allRanked = scoredStocks.map((item, idx) => ({
     ...item,
     rank: idx + 1
   }));
@@ -1691,7 +1691,8 @@ async function getTop25AlgoRankings(simDate) {
     date: targetDate,
     marketRegime: marketRegime.regime,
     totalScanned: scoredStocks.length,
-    top25
+    top25: allRanked.slice(0, 25),
+    rankings: allRanked
   };
 }
 
