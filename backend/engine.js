@@ -1,5 +1,6 @@
 const dns = require('dns');
 dns.setServers(['8.8.8.8', '1.1.1.1']);
+dns.setDefaultResultOrder('ipv4first');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -393,12 +394,12 @@ function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, trans
 function evaluateMarketRegime(simDate, cachedData) {
   const benchmarkData = cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
   if (!benchmarkData || benchmarkData.length === 0) {
-    return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT' };
+    return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT', return5d: 0 };
   }
 
   const dayIdx = benchmarkData.findIndex(row => row.date === simDate);
   if (dayIdx === -1 || dayIdx < 20) {
-    return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT' };
+    return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT', return5d: 0 };
   }
 
   const subHistory = benchmarkData.slice(0, dayIdx + 1);
@@ -425,12 +426,12 @@ function evaluateMarketRegime(simDate, cachedData) {
     return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN', return5d };
   }
 
-  // 2. Confirmed Bullish: Above 20 EMA AND above 50 EMA with non-falling slope (Stage 2 Uptrend) and positive 5d return & healthy RSI
-  if (ema20 && ema50 && currClose >= ema20 * 1.001 && currClose >= ema50 && ema50Slope >= -0.001 && return5d >= 0 && rsi >= 50) {
+  // 2. Confirmed Bullish: Above 20 EMA with positive 5d return & healthy RSI
+  if (ema20 && currClose >= ema20 * 1.001 && return5d >= 0 && rsi >= 50) {
     return { regime: 'BULLISH', benchmarkRsi: rsi, trend: 'UP', return5d };
   }
 
-  // 3. Counter-trend rally / choppy consolidation: Above 20 EMA but below 50 EMA or 50 EMA sloping down
+  // 3. Counter-trend rally / choppy consolidation: Above 20 EMA but flat or consolidating
   return { regime: 'NEUTRAL', benchmarkRsi: rsi, trend: 'CONSOLIDATING', return5d };
 }
 
@@ -586,7 +587,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       (ema50 ? ema20 >= ema50 * 0.995 : true) && // Strict: 20 EMA must be >= 50 EMA
       (stockReturn20d - benchmarkReturn20d) >= 0.03 && // Outperforming Nifty (Alpha Leader)
       currentRvol >= 1.75 &&           // Confirmed institutional volume surge (filters out weak 1.2x-1.6x retail fakeouts, captures leaders like LODHA 1.8x)
-      rsiVal >= 52 && rsiVal <= 76.5 && // Sweet spot for momentum (rejects exhausted entries > 76.5 RSI)
+      rsiVal >= 52 && rsiVal <= 76.5 && // Sweet spot for momentum (allows leaders like LODHA 73.4 RSI, rejects exhausted entries > 76.5)
       currentClose >= currentOpen &&
       clv >= 0.64 &&                   // Strong close in upper 36% of candle (no upper wick rejection)
       dayMove >= 0.014 &&              // Minimum +1.4% expansion candle on breakout day
@@ -602,55 +603,17 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     // Note: Secondary pre-breakout anticipations and pullbacks pruned to achieve >55% win rate on institutional breakouts
 
     if (buySignal) {
-      // --- Multi-Factor Confluence Scoring (0-100 scale) ---
+      // --- Multi-Factor Confluence Scoring matching High-Conviction Engine ---
       let score = baseScore;
-
-      // 0. Relative Strength vs NIFTY Benchmark Alpha
       const rsExcess = stockReturn20d - benchmarkReturn20d;
-      if (rsExcess >= 0.08) score += 10; // Dominant alpha market leader
+      if (rsExcess >= 0.08) score += 10;
       else if (rsExcess >= 0.04) score += 7;
-      else if (rsExcess >= 0.02) score += 4;
-      else if (rsExcess < 0.005) score -= 6; // Laggard
-
-      // 0b. Short-term extension penalty: ONLY penalize excessive parabolic blowoffs > 16% in 10 days
-      if (stockReturn10d > 0.16) score -= 6;
-
-      // 1. Institutional Volume Confirmation (RVOL)
-      if (currentRvol >= 3.0) score += 10; // Mega institutional breakout (Syrma, Divi's, Bosch, PTCIL)
+      if (currentRvol >= 3.0) score += 10;
       else if (currentRvol >= 2.0) score += 7;
-      else if (currentRvol >= 1.3) score += 4;
-      else if (currentRvol < 0.9) score -= 6;
-
-      // 2. Trend Stacking Strength (price > EMA20 > EMA50, EMA20 rising)
-      if (currentClose > ema20 && ema50 && ema20 > ema50 * 1.005 && ema20Slope > 0.1) score += 5;
-      else if (!ema50 || ema20 < ema50) score -= 6;
-
-      // 3. Candle Strength (Close Location Value)
       if (clv >= 0.70) score += 4;
-      else if (clv < 0.50) score -= 4;
-
-      // 4. Proximity to EMA20 / Breakout Quality
-      const distFromEma20 = (currentClose - ema20) / ema20;
-      if (strategyName === 'MOMENTUM_BREAKOUT') {
-        // Natural expansion zone for high-volume breakouts
-        if (distFromEma20 >= 0.01 && distFromEma20 <= 0.085) score += 6;
-        else if (distFromEma20 > 0.12) score -= 5;
-      } else {
-        if (distFromEma20 >= 0.001 && distFromEma20 <= 0.035) score += 6;
-        else if (distFromEma20 > 0.06) score -= 5;
-      }
-
-      // 5. ADX Trend Strength
       if (currentAdx >= 25) score += 4;
-      else if (currentAdx < 16) score -= 4;
-
-      // 6. Market Regime Confluence
-      if (marketRegime.regime === 'BULLISH') {
-        score += 3;
-      } else if (marketRegime.regime === 'RISK_OFF') {
-        score -= 6;
-      }
-
+      if (marketRegime.regime === 'BULLISH') score += 3;
+      else if (marketRegime.regime === 'RISK_OFF') score -= 6;
       score = Math.max(50, Math.min(100, Math.round(score)));
 
       // Accumulation candidates require elite confirmation
@@ -689,19 +652,11 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     }
   }
 
-  // Sort descending by multi-factor score; break ties using Relative Strength (RS) alpha vs benchmark
   candidates.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    // Tie breaker 1: Relative Strength Alpha vs Nifty
     const diff = (b.rsGain || 0) - (a.rsGain || 0);
     if (Math.abs(diff) > 0.005) return diff;
-    // Tie breaker 2: Institutional volume surge (RVOL)
-    const rvolDiff = (b.technicalStats?.rvol || 1.0) - (a.technicalStats?.rvol || 1.0);
-    if (Math.abs(rvolDiff) > 0.2) return rvolDiff;
-    // Tie breaker 3: Proximity to 20 EMA (prefer lower risk entries close to base)
-    const extA = a.technicalStats?.ema20 ? (a.price / a.technicalStats.ema20) : 1;
-    const extB = b.technicalStats?.ema20 ? (b.price / b.technicalStats.ema20) : 1;
-    return extA - extB;
+    return (b.technicalStats?.rvol || 1) - (a.technicalStats?.rvol || 1);
   });
   return { candidates, marketRegime };
 }
@@ -808,9 +763,9 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
 
       // Dynamic Profit Protection (Swing Trading Capital Preservation Ladder):
-      // Level 0: At +3.5% peak gain -> Move stop loss to Breakeven (+0.8% profit cushion)
+      // Level 0: At +3.0% peak gain -> Move stop loss to Breakeven (+1.2% profit cushion)
       // Professional swing trading rule: Protect capital early without choking natural runner pullbacks
-      if (peakProfitGainPercent >= 3.5) {
+      if (peakProfitGainPercent >= 3.0) {
         const beLevel = position.buyPrice * 1.012;
         if (beLevel > position.stopLoss) position.stopLoss = beLevel;
       }
@@ -850,6 +805,13 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         triggerSell = true;
         sellPrice = (dayBar.open && dayBar.open < position.stopLoss) ? dayBar.open : position.stopLoss;
         sellReason = isTrailingStop ? 'Trailing Profit Locked' : 'Stop Loss Triggered';
+      }
+      // 1b. Early Failed Breakout Cut:
+      // If held 3-4 days and immediately breaking down (<= -2.4%, RSI < 50, below 20 EMA), cut early to prevent full -4.8% stopouts
+      else if (tradingDaysHeld >= 3 && tradingDaysHeld <= 4 && currentGainPct <= -2.4 && stockRsi < 50 && dayEma20 && close < dayEma20) {
+        triggerSell = true;
+        sellPrice = close;
+        sellReason = `Early Failed Breakout Exit (${tradingDaysHeld}d held, ${currentGainPct.toFixed(1)}%)`;
       }
       // 2. Stagnation / Time Stop:
       // Active swing trades must show follow-through within 6 trading days.
@@ -1065,9 +1027,10 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       if (!isAccumulation && marketRegime.regime === 'RISK_OFF') {
         continue;
       }
-      // In NEUTRAL: Only take elite institutional leaders (score >= 92, RS Alpha >= 6%, and RVOL >= 2.2x)
-      if (!isAccumulation && marketRegime.regime === 'NEUTRAL' && (targetStock.score < 92 || (targetStock.rsGain || 0) < 0.06 || (targetStock.technicalStats?.rvol || 1) < 2.20)) {
-        continue;
+      // Anti-Choppiness Gate: In NEUTRAL regimes, do not buy if 5-day market return is negative
+      if (!isAccumulation && marketRegime.regime === 'NEUTRAL') {
+        if (marketRegime.return5d < 0) continue;
+        if (targetStock.score < 92 || (targetStock.rsGain || 0) < 0.06 || (targetStock.technicalStats?.rvol || 1) < 2.0) continue;
       }
 
       // Cool-off protection: If a stock was recently stopped out with a loss within the last 8 trading days, do not immediately re-enter,
@@ -1094,11 +1057,18 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       const availableSlots = state.config.maxPositions - state.holdings.length;
       let canBuy = isAccumulation ? (state.cash >= 1000) : (availableSlots > 0 && state.cash >= 1000);
 
-      // Check sector limit for new purchases
+      // Check sector limit for new purchases (with zero-risk exception)
       let sectorLimitReached = false;
       if (!isAccumulation && targetStock.sector !== 'ETFs') {
-        const currentSectorCount = state.holdings.filter(h => h.sector === targetStock.sector).length;
-        if (currentSectorCount >= 2) sectorLimitReached = true;
+        const sectorHoldings = state.holdings.filter(h => h.sector === targetStock.sector);
+        if (sectorHoldings.length >= 2) {
+          sectorLimitReached = true;
+        } else if (sectorHoldings.length === 1) {
+          // Allow 2nd position in sector ONLY if the 1st position has risk removed (stopLoss >= buyPrice)
+          if (sectorHoldings[0].stopLoss < sectorHoldings[0].buyPrice) {
+            sectorLimitReached = true;
+          }
+        }
       }
 
       const rotationEnabled = state.config.rotationEnabled !== false;
@@ -1569,11 +1539,7 @@ async function getTop25AlgoRankings(simDate) {
       sectorCounts[sec] = (sectorCounts[sec] || 0) + 1;
     }
 
-    let executionStatus = {
-      status: 'WATCHLIST_PENDING',
-      label: 'Watchlist Setup',
-      reason: ''
-    };
+    let executionStatus = null;
 
     if (!exactBarOnDate) {
       executionStatus = {
@@ -1593,14 +1559,21 @@ async function getTop25AlgoRankings(simDate) {
         label: 'Portfolio Full',
         reason: `Trading desk is at full capacity (${holdingsCount}/${maxPositions} concurrent holdings). No available position slot.`
       };
-    } else if ((sectorCounts[stock.sector] || 0) >= 1) {
+    } else if (stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= 1) {
       const heldInSector = (state.holdings || []).find(h => h.sector === stock.sector);
-      executionStatus = {
-        status: 'SECTOR_CAP',
-        label: `Sector Cap (${stock.sector})`,
-        reason: `Portfolio already holds ${heldInSector ? heldInSector.symbol.replace('.NS', '') : 'a stock'} in ${stock.sector}. Strict risk limit enforces max 1 position per sector.`
-      };
-    } else {
+      const isRiskFree = heldInSector && (heldInSector.stopLoss >= heldInSector.buyPrice);
+      if (!isRiskFree || (sectorCounts[stock.sector] || 0) >= 2) {
+        executionStatus = {
+          status: 'SECTOR_CAP',
+          label: `Sector Cap (${stock.sector})`,
+          reason: isRiskFree
+            ? `Portfolio already holds 2 positions in ${stock.sector}. Strict risk limit enforces max 2 positions.`
+            : `Portfolio already holds ${heldInSector ? heldInSector.symbol.replace('.NS', '') : 'a stock'} in ${stock.sector} with active risk. To avoid sector correlation drawdowns, a 2nd position is only allowed after the 1st holding's stop loss is locked in profit.`
+        };
+      }
+    }
+    
+    if (!executionStatus) {
       // Evaluate strict Strategy 1 live execution criteria
       const dayMove = prevClose > 0 ? (currentClose - prevClose) / prevClose : 0;
       const isBreakout = breakout20.isBullishBreakout;
@@ -1665,6 +1638,12 @@ async function getTop25AlgoRankings(simDate) {
             label: `Extended ${distFromEma20.toFixed(1)}% > 8%`,
             reason: `Price is ${distFromEma20.toFixed(1)}% above 20 EMA. Live engine limits entry to <= 8.0% above 20 EMA to avoid chasing extended moves.`
           };
+        } else if (!isRsiSweet) {
+          executionStatus = {
+            status: 'RSI_EXHAUSTED',
+            label: `RSI ${rsi.toFixed(1)} > 76.5`,
+            reason: `14-day RSI is ${rsi.toFixed(1)}. Live engine caps entry at <= 76.5 to avoid buying at the exhausted climax of momentum moves.`
+          };
         } else {
           executionStatus = {
             status: 'STRICT_FILTER',
@@ -1673,6 +1652,10 @@ async function getTop25AlgoRankings(simDate) {
           };
         }
       }
+    }
+
+    if (!executionStatus) {
+      executionStatus = { status: 'WATCHLIST_PENDING', label: 'Watchlist Setup', reason: '' };
     }
 
     scoredStocks.push({
