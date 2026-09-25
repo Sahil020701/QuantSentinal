@@ -3,13 +3,13 @@ import MiniChart from './MiniChart';
 
 // ── Time-range definitions ──────────────────────────────────────────────────
 const RANGES = [
-  { label: '1D',  days: 1 },
-  { label: '1W',  days: 7 },
-  { label: '1M',  days: 30 },
-  { label: '3M',  days: 90 },
-  { label: '6M',  days: 180 },
+  { label: '1D', days: 1 },
+  { label: '1W', days: 7 },
+  { label: '1M', days: 30 },
+  { label: '3M', days: 90 },
+  { label: '6M', days: 180 },
   { label: 'YTD', days: null, ytd: true },
-  { label: '1Y',  days: 365 },
+  { label: '1Y', days: 365 },
   { label: 'All', days: null },
 ];
 
@@ -39,7 +39,7 @@ function filterByRange(history, range) {
 export default function DashboardTab({ portfolio }) {
   const { cash, holdings, valuationHistory } = portfolio;
   const [activeRange, setActiveRange] = useState('All');
-  const [chartMode, setChartMode]     = useState('total'); // 'total' | 'invested'
+  const [chartMode, setChartMode] = useState('total'); // 'total' | 'invested'
 
   // Latest valuation details
   const latestValuation = valuationHistory[valuationHistory.length - 1] || {
@@ -49,12 +49,12 @@ export default function DashboardTab({ portfolio }) {
     holdingsValue: 0.0,
   };
 
-  const totalValue     = latestValuation.totalValue;
-  const holdingsValue  = latestValuation.holdingsValue || 0;
-  const profitPercent  = latestValuation.profitPercent || 0;
+  const totalValue = latestValuation.totalValue;
+  const holdingsValue = latestValuation.holdingsValue || 0;
+  const profitPercent = latestValuation.profitPercent || 0;
   const totalDeposited = latestValuation.totalDeposited || 50000.0;
-  const netProfit      = totalValue - totalDeposited;
-  const activeCount    = holdings.length;
+  const netProfit = totalValue - totalDeposited;
+  const activeCount = holdings.length;
 
   // ── Filtered chart data ─────────────────────────────────────────────────
   const selectedRange = RANGES.find(r => r.label === activeRange) || RANGES[RANGES.length - 1];
@@ -65,29 +65,29 @@ export default function DashboardTab({ portfolio }) {
 
   // Chart mode derivations
   const isInvestedMode = chartMode === 'invested';
-  const chartValueKey  = isInvestedMode ? 'holdingsValue' : 'totalValue';
-  const chartTitle     = isInvestedMode ? 'Invested Holdings Value' : 'Portfolio Net Worth';
+  const chartValueKey = isInvestedMode ? 'holdingsValue' : 'totalValue';
+  const chartTitle = isInvestedMode ? 'Invested Holdings Value' : 'Portfolio Net Worth';
 
   // Period-level performance — deposit-adjusted (total mode)
   // We use the stored profitPercent (= (totalValue - totalDeposited) / totalDeposited × 100)
   // which the backend already corrects for monthly injections.
-  const periodStartROI  = filteredHistory[0]?.profitPercent ?? 0;
-  const periodEndROI    = filteredHistory[filteredHistory.length - 1]?.profitPercent ?? 0;
+  const periodStartROI = filteredHistory[0]?.profitPercent ?? 0;
+  const periodEndROI = filteredHistory[filteredHistory.length - 1]?.profitPercent ?? 0;
 
   // Invested-only mode: simple diff of holdingsValue (no deposit distortion in holdings)
-  const periodStartHV   = filteredHistory[0]?.holdingsValue ?? holdingsValue;
-  const periodEndHV     = filteredHistory[filteredHistory.length - 1]?.holdingsValue ?? holdingsValue;
+  const periodStartHV = filteredHistory[0]?.holdingsValue ?? holdingsValue;
+  const periodEndHV = filteredHistory[filteredHistory.length - 1]?.holdingsValue ?? holdingsValue;
 
   const periodChangePct = isInvestedMode
     ? (periodStartHV !== 0 ? ((periodEndHV - periodStartHV) / periodStartHV) * 100 : 0)
     : (periodEndROI - periodStartROI);   // delta of deposit-adjusted ROI
-  const periodIsUp      = periodChangePct >= 0;
+  const periodIsUp = periodChangePct >= 0;
 
   // ₹ change for the period
-  const periodStartCapital   = filteredHistory[0]?.totalDeposited ?? totalDeposited;
-  const periodStartValue     = filteredHistory[0]?.totalValue ?? totalValue;
+  const periodStartCapital = filteredHistory[0]?.totalDeposited ?? totalDeposited;
+  const periodStartValue = filteredHistory[0]?.totalValue ?? totalValue;
   const periodStartTradingPL = periodStartValue - periodStartCapital;
-  const periodEndTradingPL   = totalValue - totalDeposited;
+  const periodEndTradingPL = totalValue - totalDeposited;
   const periodChangeAmt = isInvestedMode
     ? (periodEndHV - periodStartHV)
     : (periodEndTradingPL - periodStartTradingPL);
@@ -138,18 +138,6 @@ export default function DashboardTab({ portfolio }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
               <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {chartTitle}
-                <span style={{
-                  fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px',
-                  borderRadius: '20px', background: 'rgba(22,163,74,0.12)',
-                  color: '#16a34a', border: '1px solid rgba(22,163,74,0.25)',
-                  display: 'flex', alignItems: 'center', gap: '4px'
-                }}>
-                  <span style={{
-                    width: 6, height: 6, borderRadius: '50%', background: '#16a34a',
-                    display: 'inline-block', animation: 'pulse 2s infinite'
-                  }} />
-                  LIVE
-                </span>
               </h2>
 
             </div>
@@ -162,7 +150,7 @@ export default function DashboardTab({ portfolio }) {
                 display: 'flex', borderRadius: '8px', overflow: 'hidden',
                 border: '1px solid var(--border-color)', flexShrink: 0
               }}>
-                {[{ key: 'total', label: '📊 Total' }, { key: 'invested', label: '📈 Invested Only' }].map(m => (
+                {[{ key: 'total', label: 'Total' }, { key: 'invested', label: 'Invested Only' }].map(m => (
                   <button
                     key={m.key}
                     onClick={() => setChartMode(m.key)}
