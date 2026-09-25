@@ -811,7 +811,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       // Level 0: At +3.5% peak gain -> Move stop loss to Breakeven (+0.8% profit cushion)
       // Professional swing trading rule: Protect capital early without choking natural runner pullbacks
       if (peakProfitGainPercent >= 3.5) {
-        const beLevel = position.buyPrice * 1.01;
+        const beLevel = position.buyPrice * 1.012;
         if (beLevel > position.stopLoss) position.stopLoss = beLevel;
       }
 
