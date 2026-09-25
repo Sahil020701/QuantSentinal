@@ -223,14 +223,8 @@ export default function MiniChart({
           />
         )}
 
-        {/* Small dots on hover or sparse data */}
-        {showPoints && points.map((p, idx) => (
-          <circle key={idx} cx={p.x} cy={p.y}
-            r={hoveredIdx === idx ? 0 : (points.length < 40 ? 2 : 0)}
-            fill="white" stroke={lineColor} strokeWidth="1.5"
-            style={{ transition: 'r 0.1s' }}
-          />
-        ))}
+
+
 
         {/* Hover crosshair */}
         {hoveredIdx !== null && (

@@ -39,6 +39,7 @@ function filterByRange(history, range) {
 export default function DashboardTab({ portfolio }) {
   const { cash, holdings, valuationHistory } = portfolio;
   const [activeRange, setActiveRange] = useState('All');
+  const [chartMode, setChartMode]     = useState('total'); // 'total' | 'invested'
 
   // Latest valuation details
   const latestValuation = valuationHistory[valuationHistory.length - 1] || {
@@ -62,22 +63,34 @@ export default function DashboardTab({ portfolio }) {
     [valuationHistory, selectedRange]
   );
 
-  // Period-level performance — deposit-adjusted
+  // Chart mode derivations
+  const isInvestedMode = chartMode === 'invested';
+  const chartValueKey  = isInvestedMode ? 'holdingsValue' : 'totalValue';
+  const chartTitle     = isInvestedMode ? 'Invested Holdings Value' : 'Portfolio Net Worth';
+
+  // Period-level performance — deposit-adjusted (total mode)
   // We use the stored profitPercent (= (totalValue - totalDeposited) / totalDeposited × 100)
   // which the backend already corrects for monthly injections.
-  // Comparing the ROI at period-start vs period-end gives the true trading return for the period.
   const periodStartROI  = filteredHistory[0]?.profitPercent ?? 0;
   const periodEndROI    = filteredHistory[filteredHistory.length - 1]?.profitPercent ?? 0;
-  const periodChangePct = periodEndROI - periodStartROI;   // delta of deposit-adjusted ROI
+
+  // Invested-only mode: simple diff of holdingsValue (no deposit distortion in holdings)
+  const periodStartHV   = filteredHistory[0]?.holdingsValue ?? holdingsValue;
+  const periodEndHV     = filteredHistory[filteredHistory.length - 1]?.holdingsValue ?? holdingsValue;
+
+  const periodChangePct = isInvestedMode
+    ? (periodStartHV !== 0 ? ((periodEndHV - periodStartHV) / periodStartHV) * 100 : 0)
+    : (periodEndROI - periodStartROI);   // delta of deposit-adjusted ROI
   const periodIsUp      = periodChangePct >= 0;
 
-  // For displaying an ₹ amount: use the actual trading gain = totalValue - totalDeposited at each end.
-  // Difference represents pure P&L gained during the period (deposit-neutral).
-  const periodStartCapital = filteredHistory[0]?.totalDeposited ?? totalDeposited;
-  const periodStartValue   = filteredHistory[0]?.totalValue ?? totalValue;
+  // ₹ change for the period
+  const periodStartCapital   = filteredHistory[0]?.totalDeposited ?? totalDeposited;
+  const periodStartValue     = filteredHistory[0]?.totalValue ?? totalValue;
   const periodStartTradingPL = periodStartValue - periodStartCapital;
   const periodEndTradingPL   = totalValue - totalDeposited;
-  const periodChangeAmt = periodEndTradingPL - periodStartTradingPL;
+  const periodChangeAmt = isInvestedMode
+    ? (periodEndHV - periodStartHV)
+    : (periodEndTradingPL - periodStartTradingPL);
 
   return (
     <div className="tab-content">
@@ -124,7 +137,7 @@ export default function DashboardTab({ portfolio }) {
           <div className="panel-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
               <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                Portfolio Net Worth
+                {chartTitle}
                 <span style={{
                   fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px',
                   borderRadius: '20px', background: 'rgba(22,163,74,0.12)',
@@ -160,46 +173,78 @@ export default function DashboardTab({ portfolio }) {
               </div>
             </div>
 
-            {/* Time Range Buttons */}
-            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-              {RANGES.map(r => (
-                <button
-                  key={r.label}
-                  onClick={() => setActiveRange(r.label)}
-                  style={{
-                    padding: '4px 10px',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    borderRadius: '6px',
-                    border: activeRange === r.label
-                      ? '1px solid var(--accent)'
-                      : '1px solid var(--border-color)',
-                    background: activeRange === r.label
-                      ? 'var(--accent)'
-                      : 'transparent',
-                    color: activeRange === r.label
-                      ? '#ffffff'
-                      : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    fontFamily: 'inherit',
-                  }}
-                  onMouseEnter={e => {
-                    if (activeRange !== r.label) {
-                      e.currentTarget.style.borderColor = 'var(--accent)';
-                      e.currentTarget.style.color = 'var(--accent)';
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (activeRange !== r.label) {
-                      e.currentTarget.style.borderColor = 'var(--border-color)';
-                      e.currentTarget.style.color = 'var(--text-secondary)';
-                    }
-                  }}
-                >
-                  {r.label === 'All' ? 'Since Inception' : r.label}
-                </button>
-              ))}
+            {/* Controls row: mode toggle + time range buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+
+              {/* Chart Mode Toggle */}
+              <div style={{
+                display: 'flex', borderRadius: '8px', overflow: 'hidden',
+                border: '1px solid var(--border-color)', flexShrink: 0
+              }}>
+                {[{ key: 'total', label: '📊 Total' }, { key: 'invested', label: '📈 Invested Only' }].map(m => (
+                  <button
+                    key={m.key}
+                    onClick={() => setChartMode(m.key)}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      border: 'none',
+                      borderRight: m.key === 'total' ? '1px solid var(--border-color)' : 'none',
+                      background: chartMode === m.key ? 'var(--accent)' : 'transparent',
+                      color: chartMode === m.key ? '#ffffff' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Time Range Buttons */}
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {RANGES.map(r => (
+                  <button
+                    key={r.label}
+                    onClick={() => setActiveRange(r.label)}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      borderRadius: '6px',
+                      border: activeRange === r.label
+                        ? '1px solid var(--accent)'
+                        : '1px solid var(--border-color)',
+                      background: activeRange === r.label
+                        ? 'var(--accent)'
+                        : 'transparent',
+                      color: activeRange === r.label
+                        ? '#ffffff'
+                        : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => {
+                      if (activeRange !== r.label) {
+                        e.currentTarget.style.borderColor = 'var(--accent)';
+                        e.currentTarget.style.color = 'var(--accent)';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (activeRange !== r.label) {
+                        e.currentTarget.style.borderColor = 'var(--border-color)';
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                      }
+                    }}
+                  >
+                    {r.label === 'All' ? 'Since Inception' : r.label}
+                  </button>
+                ))}
+              </div>
+
             </div>
           </div>
 
@@ -207,10 +252,10 @@ export default function DashboardTab({ portfolio }) {
           <div style={{ height: '300px', marginTop: '0.25rem' }}>
             <MiniChart
               data={filteredHistory}
-              valueKey="totalValue"
+              valueKey={chartValueKey}
               dateKey="date"
               fillGradId="netWorthGrad"
-              baselineValue={totalDeposited}
+              baselineValue={isInvestedMode ? null : totalDeposited}
             />
           </div>
 
