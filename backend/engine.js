@@ -416,6 +416,7 @@ function evaluateMarketRegime(simDate, cachedData) {
 
   const ema20 = ema20Arr[ema20Arr.length - 1];
   const ema50 = ema50Arr[ema50Arr.length - 1];
+  const ema50Slope = calculateSlope(ema50Arr, 10);
   const rsi = rsiArr[rsiArr.length - 1] || 50;
 
   // 1. Confirmed RISK_OFF: Benchmark is below 20 EMA, or benchmark 5d return is negative, or RSI < 48
@@ -423,11 +424,12 @@ function evaluateMarketRegime(simDate, cachedData) {
     return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN', return5d };
   }
 
-  // 2. Confirmed Bullish: Above 20 EMA with positive 5d return and healthy RSI
-  if (ema20 && currClose >= ema20 * 1.001 && return5d >= 0 && rsi >= 50) {
+  // 2. Confirmed Bullish: Above 20 EMA AND above 50 EMA with non-falling slope (Stage 2 Uptrend) and positive 5d return & healthy RSI
+  if (ema20 && ema50 && currClose >= ema20 * 1.001 && currClose >= ema50 && ema50Slope >= -0.001 && return5d >= 0 && rsi >= 50) {
     return { regime: 'BULLISH', benchmarkRsi: rsi, trend: 'UP', return5d };
   }
 
+  // 3. Counter-trend rally / choppy consolidation: Above 20 EMA but below 50 EMA or 50 EMA sloping down
   return { regime: 'NEUTRAL', benchmarkRsi: rsi, trend: 'CONSOLIDATING', return5d };
 }
 
@@ -805,16 +807,16 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       }
 
       // Dynamic Profit Protection (Swing Trading Capital Preservation Ladder):
-      // Level 1: At +7.0% peak gain -> Move stop loss to Breakeven (+0.8% profit cushion)
-      // Protects profitable swing moves while allowing healthy breakout retests
-      if (peakProfitGainPercent >= 7.0) {
+      // Level 0: At +3.5% peak gain -> Move stop loss to Breakeven (+0.8% profit cushion)
+      // Professional swing trading rule: Protect capital early without choking natural runner pullbacks
+      if (peakProfitGainPercent >= 3.5) {
         const beLevel = position.buyPrice * 1.008;
         if (beLevel > position.stopLoss) position.stopLoss = beLevel;
       }
 
-      // Level 2: At +12.0% peak gain -> Lock in +6.0% minimum profit
-      if (peakProfitGainPercent >= 12.0) {
-        const lockProfit1 = position.buyPrice * 1.060;
+      // Level 1: At +11.0% peak gain -> Lock in +5.5% minimum profit
+      if (peakProfitGainPercent >= 11.0) {
+        const lockProfit1 = position.buyPrice * 1.055;
         if (lockProfit1 > position.stopLoss) position.stopLoss = lockProfit1;
       }
 
@@ -1067,13 +1069,23 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         continue;
       }
 
-      // Cool-off protection: If a stock was recently stopped out with a loss within the last 15 trading days, do not immediately re-enter
+      // Cool-off protection: If a stock was recently stopped out with a loss within the last 8 trading days, do not immediately re-enter,
+      // UNLESS it produces an exceptional institutional volume explosion (RVOL >= 2.0) proving a bear trap / shakeout reversal.
       if (!isAccumulation) {
         const simIdx = tradingDates.indexOf(simDate);
         const recentLoss = state.history.some(t => {
           if (t.symbol !== targetStock.symbol || t.profit > 0) return false;
           const sellIdx = tradingDates.indexOf(t.sellDate);
-          return sellIdx !== -1 && (simIdx - sellIdx) <= 15;
+          if (sellIdx === -1) return false;
+          const daysSinceLoss = simIdx - sellIdx;
+          if (daysSinceLoss <= 8) {
+            // Institutional shakeout bypass: If volume is massive (RVOL >= 2.0), allow re-entry
+            if ((targetStock.technicalStats?.rvol || 1) >= 2.0) {
+              return false;
+            }
+            return true;
+          }
+          return false;
         });
         if (recentLoss) continue;
       }
