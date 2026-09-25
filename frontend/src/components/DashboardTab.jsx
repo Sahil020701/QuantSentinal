@@ -151,26 +151,7 @@ export default function DashboardTab({ portfolio }) {
                   LIVE
                 </span>
               </h2>
-              {/* Period performance pill — deposit-adjusted */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{
-                  fontSize: '0.82rem', fontWeight: 700,
-                  color: periodIsUp ? '#16a34a' : '#dc2626'
-                }}>
-                  {periodIsUp ? '▲ +' : '▼ '}₹{Math.abs(periodChangeAmt).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-                <span style={{
-                  fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                  background: periodIsUp ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)',
-                  color: periodIsUp ? '#16a34a' : '#dc2626',
-                  border: `1px solid ${periodIsUp ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.25)'}`,
-                }}>
-                  {periodIsUp ? '+' : ''}{Math.abs(periodChangePct).toFixed(2)}% ROI
-                </span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                  {activeRange === 'All' ? 'Since Inception' : `Past ${activeRange}`} · excl. deposits
-                </span>
-              </div>
+
             </div>
 
             {/* Controls row: mode toggle + time range buttons */}

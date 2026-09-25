@@ -243,18 +243,12 @@ export default function MiniChart({
       {/* Tooltip */}
       {showTooltip && hoveredIdx !== null && (() => {
         const pt  = points[hoveredIdx];
-        const chg = pt.val - values[0];
-        const pct = values[0] ? (chg / values[0]) * 100 : 0;
-        const up  = chg >= 0;
         return (
           <div className="chart-tooltip"
             style={{ left: `${tooltipPos.x}px`, top: `${tooltipPos.y}px`, transform: 'translateX(-50%)' }}>
             <span className="chart-tooltip-date">{pt.date}</span>
             <span className="chart-tooltip-val">
               {valuePrefix}{pt.val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: up ? '#16a34a' : '#dc2626' }}>
-              {up ? '▲ +' : '▼ '}{pct.toFixed(2)}% vs period start
             </span>
           </div>
         );
