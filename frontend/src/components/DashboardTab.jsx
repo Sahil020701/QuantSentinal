@@ -63,18 +63,35 @@ export default function DashboardTab({ portfolio }) {
     [valuationHistory, selectedRange]
   );
 
-  // Chart mode derivations
+  // Chart mode derivations: 'total' | 'invested' | 'pl'
   const isInvestedMode = chartMode === 'invested';
-  const chartValueKey = isInvestedMode ? 'holdingsValue' : 'totalValue';
-  const chartTitle = isInvestedMode ? 'Invested Holdings Value' : 'Portfolio Net Worth';
+  const isPlMode = chartMode === 'pl';
 
-  // Period-level performance — deposit-adjusted (total mode)
-  // We use the stored profitPercent (= (totalValue - totalDeposited) / totalDeposited × 100)
-  // which the backend already corrects for monthly injections.
+  const chartTitle = isPlMode
+    ? 'Pure Trading P&L'
+    : isInvestedMode
+      ? 'Invested Holdings Value'
+      : 'Portfolio Net Worth';
+
+  // Ensure each history item has plAmt (totalValue - totalDeposited) and plPct (profitPercent)
+  const chartData = useMemo(() => {
+    return filteredHistory.map(item => {
+      const dep = item.totalDeposited || 50000;
+      const tv = item.totalValue || 0;
+      return {
+        ...item,
+        plAmt: tv - dep,
+        plPct: item.profitPercent ?? 0,
+      };
+    });
+  }, [filteredHistory]);
+
+  const chartValueKey = isPlMode ? 'plAmt' : isInvestedMode ? 'holdingsValue' : 'totalValue';
+
+  // Period-level performance
   const periodStartROI = filteredHistory[0]?.profitPercent ?? 0;
   const periodEndROI = filteredHistory[filteredHistory.length - 1]?.profitPercent ?? 0;
 
-  // Invested-only mode: simple diff of holdingsValue (no deposit distortion in holdings)
   const periodStartHV = filteredHistory[0]?.holdingsValue ?? holdingsValue;
   const periodEndHV = filteredHistory[filteredHistory.length - 1]?.holdingsValue ?? holdingsValue;
 
@@ -150,7 +167,11 @@ export default function DashboardTab({ portfolio }) {
                 display: 'flex', borderRadius: '8px', overflow: 'hidden',
                 border: '1px solid var(--border-color)', flexShrink: 0
               }}>
-                {[{ key: 'total', label: 'Total' }, { key: 'invested', label: 'Invested Only' }].map(m => (
+                {[
+                  { key: 'total', label: 'Total' },
+                  { key: 'invested', label: 'Invested Only' },
+                  { key: 'pl', label: 'Pure P/L' }
+                ].map((m, idx, arr) => (
                   <button
                     key={m.key}
                     onClick={() => setChartMode(m.key)}
@@ -159,7 +180,7 @@ export default function DashboardTab({ portfolio }) {
                       fontSize: '0.72rem',
                       fontWeight: 600,
                       border: 'none',
-                      borderRight: m.key === 'total' ? '1px solid var(--border-color)' : 'none',
+                      borderRight: idx < arr.length - 1 ? '1px solid var(--border-color)' : 'none',
                       background: chartMode === m.key ? 'var(--accent)' : 'transparent',
                       color: chartMode === m.key ? '#ffffff' : 'var(--text-secondary)',
                       cursor: 'pointer',
@@ -220,11 +241,12 @@ export default function DashboardTab({ portfolio }) {
           {/* Chart */}
           <div style={{ height: '300px', marginTop: '0.25rem' }}>
             <MiniChart
-              data={filteredHistory}
+              data={chartData}
               valueKey={chartValueKey}
               dateKey="date"
               fillGradId="netWorthGrad"
-              baselineValue={isInvestedMode ? null : totalDeposited}
+              baselineValue={isPlMode ? 0 : isInvestedMode ? null : totalDeposited}
+              baselineLabel={isPlMode ? 'Break-even (₹0)' : 'Invested Capital'}
             />
           </div>
 
@@ -235,8 +257,16 @@ export default function DashboardTab({ portfolio }) {
             borderTop: '1px solid var(--border-color)',
             fontSize: '0.75rem', color: 'var(--text-secondary)'
           }}>
-            <span>Invested Capital: <strong style={{ color: 'var(--text-primary)' }}>₹{totalDeposited.toLocaleString('en-IN')}</strong></span>
-            <span>Data Points: <strong style={{ color: 'var(--text-primary)' }}>{filteredHistory.length}</strong></span>
+            {isPlMode ? (
+              <span>Net Profit: <strong style={{ color: netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {netProfit >= 0 ? '+' : ''}₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%)
+              </strong></span>
+            ) : isInvestedMode ? (
+              <span>Invested Value: <strong style={{ color: 'var(--text-primary)' }}>₹{holdingsValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+            ) : (
+              <span>Invested Capital: <strong style={{ color: 'var(--text-primary)' }}>₹{totalDeposited.toLocaleString('en-IN')}</strong></span>
+            )}
+            <span>Data Points: <strong style={{ color: 'var(--text-primary)' }}>{chartData.length}</strong></span>
             <span>Last Updated: <strong style={{ color: 'var(--accent)' }}>{portfolio.lastSimulationDate}</strong></span>
           </div>
         </div>

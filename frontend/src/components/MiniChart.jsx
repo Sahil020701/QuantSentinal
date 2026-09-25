@@ -11,6 +11,7 @@ import React, { useState, useRef, useEffect } from 'react';
  * @param {string} fillGradId - ID of gradient to use
  * @param {string} valuePrefix - Symbol prefix (e.g. ₹)
  * @param {number} baselineValue - Optional baseline (e.g. deposited capital) for reference line
+ * @param {string} baselineLabel - Optional label for the baseline reference line
  */
 export default function MiniChart({
   data = [],
@@ -22,6 +23,7 @@ export default function MiniChart({
   fillGradId = 'chartGrad',
   valuePrefix = '₹',
   baselineValue = null,
+  baselineLabel = 'Invested Capital',
 }) {
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -51,7 +53,7 @@ export default function MiniChart({
   const maxVal = Math.max(...values);
   const valRange = maxVal - minVal || 1;
   const padPct = 0.12;
-  const adjustedMin   = Math.max(0, minVal - valRange * padPct);
+  const adjustedMin   = minVal >= 0 ? Math.max(0, minVal - valRange * padPct) : minVal - valRange * padPct;
   const adjustedMax   = maxVal + valRange * padPct;
   const adjustedRange = adjustedMax - adjustedMin;
 
@@ -123,10 +125,12 @@ export default function MiniChart({
 
   // Y-axis grid labels (abbreviated)
   const formatY = (v) => {
-    if (v >= 10000000) return `${(v / 10000000).toFixed(1)}Cr`;
-    if (v >= 100000)   return `${(v / 100000).toFixed(1)}L`;
-    if (v >= 1000)     return `${(v / 1000).toFixed(1)}K`;
-    return Math.round(v).toString();
+    const abs = Math.abs(v);
+    const sign = v < 0 ? '-' : '';
+    if (abs >= 10000000) return `${sign}${(abs / 10000000).toFixed(1)}Cr`;
+    if (abs >= 100000)   return `${sign}${(abs / 100000).toFixed(1)}L`;
+    if (abs >= 1000)     return `${sign}${(abs / 1000).toFixed(1)}K`;
+    return `${sign}${Math.round(abs)}`;
   };
   const gridLines = Array.from({ length: 5 }, (_, i) => {
     const ratio  = i / 4;
@@ -200,13 +204,13 @@ export default function MiniChart({
         <line x1={paddingX} y1={height - paddingBot} x2={width - paddingX} y2={height - paddingBot}
           stroke="rgba(15,23,42,0.07)" strokeWidth="1" />
 
-        {/* Baseline (deposited capital) reference */}
+        {/* Baseline (deposited capital or break-even) reference */}
         {baselineY !== null && (
           <g>
             <line x1={paddingX} y1={baselineY} x2={width - paddingX} y2={baselineY}
               stroke="rgba(100,116,139,0.45)" strokeWidth="1" strokeDasharray="5 4" />
             <text x={paddingX + 4} y={baselineY - 5}
-              fill="#94a3b8" fontSize="8.5" fontWeight="600" fontFamily="inherit">Invested Capital</text>
+              fill="#94a3b8" fontSize="8.5" fontWeight="600" fontFamily="inherit">{baselineLabel}</text>
           </g>
         )}
 
@@ -248,7 +252,7 @@ export default function MiniChart({
             style={{ left: `${tooltipPos.x}px`, top: `${tooltipPos.y}px`, transform: 'translateX(-50%)' }}>
             <span className="chart-tooltip-date">{pt.date}</span>
             <span className="chart-tooltip-val">
-              {valuePrefix}{pt.val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {pt.val < 0 ? '-' : ''}{valuePrefix}{Math.abs(pt.val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
         );
