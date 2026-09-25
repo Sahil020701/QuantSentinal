@@ -103,8 +103,14 @@ export default function DashboardTab({ portfolio }) {
               <span style={{ fontWeight: '600' }}>{portfolio.history.length}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Last Updated Date:</span>
-              <span style={{ fontWeight: '600', color: 'var(--accent)' }}>{portfolio.lastSimulationDate}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Simulation Window:</span>
+              <span style={{ fontWeight: '600', color: 'var(--accent)' }}>
+                {portfolio.simulationStartDate || '2026-07-01'} → {portfolio.simulationEndDate || portfolio.lastSimulationDate}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Last Processed Date:</span>
+              <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{portfolio.lastSimulationDate}</span>
             </div>
           </div>
         </div>

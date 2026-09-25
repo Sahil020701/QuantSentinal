@@ -59,11 +59,18 @@ const getTodayUTCDateString = getLatestTradingDateIST;
 // GET Portfolio (Includes automated catch-up simulation)
 app.get('/api/portfolio', async (req, res) => {
   try {
+    const currentState = await loadState();
     const todayStr = getTodayUTCDateString();
-    console.log(`GET /api/portfolio requested. Attempting catch-up simulation to ${todayStr}...`);
     
-    // Automatically catch up to today
-    const state = await runSimulation(todayStr);
+    // If simulation is constrained to a specific historical end date, do not auto-advance beyond it
+    const targetEndDate = (currentState.simulationEndDate && currentState.simulationEndDate < todayStr)
+      ? currentState.simulationEndDate
+      : todayStr;
+
+    console.log(`GET /api/portfolio requested. Attempting catch-up simulation to ${targetEndDate}...`);
+    
+    // Catch up to targetEndDate if needed
+    const state = await runSimulation(targetEndDate);
     res.json(state);
   } catch (error) {
     console.error("Error in GET /api/portfolio:", error);
@@ -106,10 +113,15 @@ app.get('/api/algo-top25', async (req, res) => {
 // POST Trigger Catch-up Run Manually
 app.post('/api/trigger-run', async (req, res) => {
   try {
+    const currentState = await loadState();
     const todayStr = getTodayUTCDateString();
-    console.log(`Manual trigger run requested up to ${todayStr}...`);
-    let state = await runSimulation(todayStr, true);
-    state = await deployIdleCash(todayStr);
+    const targetEndDate = (currentState.simulationEndDate && currentState.simulationEndDate < todayStr)
+      ? currentState.simulationEndDate
+      : todayStr;
+
+    console.log(`Manual trigger run requested up to ${targetEndDate}...`);
+    let state = await runSimulation(targetEndDate, true);
+    state = await deployIdleCash(targetEndDate);
     res.json({ message: "Simulation catch-up and cash deployment completed.", state });
   } catch (error) {
     console.error("Error in manual run:", error);
@@ -120,23 +132,28 @@ app.post('/api/trigger-run', async (req, res) => {
 // POST Reset Simulation
 app.post('/api/reset', async (req, res) => {
   try {
-    const { startDate, replay = true } = req.body || {};
+    const { startDate, endDate, replay = true } = req.body || {};
     const todayStr = getTodayUTCDateString();
     const targetStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2026-07-01');
+    const targetEndDate = (endDate === 'today' || !endDate) ? todayStr : endDate;
     
-    console.log(`Resetting simulation baseline to ${targetStartDate} (replay=${replay})...`);
-    let state = await resetSimulation(targetStartDate);
-
-    if (replay && targetStartDate < todayStr) {
-      console.log(`Auto-replaying simulation from ${targetStartDate} to ${todayStr}...`);
-      state = await runSimulation(todayStr, false);
-      state = await deployIdleCash(todayStr);
+    if (targetEndDate < targetStartDate) {
+      return res.status(400).json({ error: "Simulation end date cannot be earlier than start date." });
     }
 
-    res.json({ message: `Simulation reset successful with start date ${targetStartDate}.`, state });
+    console.log(`Resetting simulation baseline to ${targetStartDate}, target end date ${targetEndDate} (replay=${replay})...`);
+    let state = await resetSimulation(targetStartDate, targetEndDate);
+
+    if (replay && targetStartDate < targetEndDate) {
+      console.log(`Auto-replaying simulation from ${targetStartDate} to ${targetEndDate}...`);
+      state = await runSimulation(targetEndDate, false);
+      state = await deployIdleCash(targetEndDate);
+    }
+
+    res.json({ message: `Simulation reset successful with window ${targetStartDate} to ${targetEndDate}.`, state });
   } catch (error) {
     console.error("Error resetting simulation:", error);
-    res.status(500).json({ error: "Failed to reset simulation" });
+    res.status(500).json({ error: "Failed to reset simulation", details: error.message });
   }
 });
 
@@ -245,10 +262,15 @@ app.post('/api/deposit', async (req, res) => {
 // Automated Background Scheduler for Market Open & Trigger Execution
 async function runAutomatedEngineCycle(forceRefresh = false) {
   try {
+    const currentState = await loadState();
     const todayStr = getTodayUTCDateString();
-    console.log(`[AUTOMATED SCHEDULER] Running engine cycle for date ${todayStr}...`);
-    let state = await runSimulation(todayStr, forceRefresh);
-    state = await deployIdleCash(todayStr);
+    const targetEndDate = (currentState.simulationEndDate && currentState.simulationEndDate < todayStr)
+      ? currentState.simulationEndDate
+      : todayStr;
+
+    console.log(`[AUTOMATED SCHEDULER] Running engine cycle for date ${targetEndDate}...`);
+    let state = await runSimulation(targetEndDate, forceRefresh);
+    state = await deployIdleCash(targetEndDate);
     console.log(`[AUTOMATED SCHEDULER] Cycle complete. Last simulation date: ${state.lastSimulationDate}`);
   } catch (error) {
     console.error("[AUTOMATED SCHEDULER] Error during engine cycle execution:", error.message);
@@ -258,8 +280,8 @@ async function runAutomatedEngineCycle(forceRefresh = false) {
 function startTradingScheduler() {
   console.log("Starting Quant Sentinal Automated Trading Scheduler...");
   
-  // 1. Execute immediately on startup catchup
-  runAutomatedEngineCycle(true);
+  // 1. Execute immediately on startup catchup (fast boot using cache)
+  runAutomatedEngineCycle(false);
 
   // 2. Schedule periodic checks (Every 30 minutes during market hours)
   const SCHEDULER_INTERVAL_MS = 30 * 60 * 1000;

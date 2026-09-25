@@ -69,6 +69,8 @@ loadWatchlist();
 
 // Default initial state starting July 1, 2026
 const INITIAL_STATE = {
+  simulationStartDate: '2026-07-01',
+  simulationEndDate: null,
   lastSimulationDate: '2026-07-01',
   cash: 50000.0,
   holdings: [],
@@ -145,10 +147,12 @@ async function saveState(state) {
 }
 
 // Reset state
-async function resetSimulation(customStartDate) {
+async function resetSimulation(customStartDate, customEndDate = null) {
   const startDate = customStartDate || '2026-07-01';
   const state = {
     ...JSON.parse(JSON.stringify(INITIAL_STATE)),
+    simulationStartDate: startDate,
+    simulationEndDate: customEndDate || null,
     lastSimulationDate: startDate,
     cash: 50000.0,
     holdings: [],
@@ -167,7 +171,7 @@ async function resetSimulation(customStartDate) {
       {
         date: startDate,
         sentiment: 'NEUTRAL',
-        text: `Quant Sentinal Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
+        text: `Quant Sentinal Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation window set: ${startDate}${customEndDate ? ` to ${customEndDate}` : ' to Latest'}. Ready for market scanning and execution.`
       }
     ]
   };
