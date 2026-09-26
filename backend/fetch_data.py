@@ -46,6 +46,9 @@ ETFS = [
 # Core stocks always included regardless of whether live CSV download succeeds.
 # These guarantee coverage of high-momentum stocks that may not always appear in index CSVs.
 CORE_BUILTIN_WATCHLIST = [
+    # ── Metal & Commodity ETFs ──
+    {"symbol": "GOLDBEES.NS", "name": "Nippon India ETF Gold BeES", "sector": "Precious Metals"},
+    {"symbol": "SILVERBEES.NS", "name": "Nippon India ETF Silver BeES", "sector": "Precious Metals"},
     # ── Nifty 50 Heavyweights ──
     {"symbol": "RELIANCE.NS", "name": "Reliance Industries Ltd.", "sector": "Oil Gas & Consumable Fuels"},
     {"symbol": "TCS.NS", "name": "Tata Consultancy Services Ltd.", "sector": "Information Technology"},

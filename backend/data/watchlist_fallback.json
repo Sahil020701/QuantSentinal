@@ -20,6 +20,16 @@
     "sector": "ETFs"
   },
   {
+    "symbol": "GOLDBEES.NS",
+    "name": "Nippon India ETF Gold BeES",
+    "sector": "Precious Metals"
+  },
+  {
+    "symbol": "SILVERBEES.NS",
+    "name": "Nippon India ETF Silver BeES",
+    "sector": "Precious Metals"
+  },
+  {
     "symbol": "360ONE.NS",
     "name": "360 ONE WAM Ltd.",
     "sector": "Financial Services"

@@ -24,6 +24,8 @@ const os = require('os');
 const FALLBACK_WATCHLIST_FILE = path.join(__dirname, 'data', 'watchlist_fallback.json');
 
 const DEFAULT_WATCHLIST = [
+  { symbol: 'GOLDBEES.NS', name: 'Nippon India ETF Gold BeES', sector: 'Precious Metals' },
+  { symbol: 'SILVERBEES.NS', name: 'Nippon India ETF Silver BeES', sector: 'Precious Metals' },
   { symbol: 'RELIANCE.NS', name: 'Reliance Industries', sector: 'Energy & Conglomerate' },
   { symbol: 'TCS.NS', name: 'Tata Consultancy Services', sector: 'IT Services' },
   { symbol: 'HDFCBANK.NS', name: 'HDFC Bank Ltd', sector: 'Banking & Financials' },
@@ -94,7 +96,7 @@ const INITIAL_STATE = {
   config: {
     targetProfitPercent: 0.25, // +25.0% baseline with dynamic uncapped trailing runner
     stopLossPercent: 0.048,    // -4.8% strict risk-managed stop loss (eliminates large drawdowns)
-    maxPositions: 12,          // 12 positions to deploy capital across high-probability leaders (~8% each)
+    maxPositions: 10,          // 10 concentrated positions (~10%-12% each) to maximize compounding & reduce cash drag
     aggressiveness: 'aggressive', // conservative, moderate, aggressive, hyper
     rotationEnabled: false,     // Disabled to eliminate whipsaw churn on normal pullbacks
     rotationMinCandidateScore: 90, // High bar if rotation is manually turned on
@@ -490,22 +492,23 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     let isAccumulationCandidate = false;
 
     if (existingHolding) {
-      // --- Safe Pyramiding / Accumulation Guardrails ---
+      // --- Safe Pyramiding / Accumulation Guardrails (Pillar 4) ---
       // 1. Max 1 accumulation tranche per holding
-      // 2. Minimum cushion: unrealized profit >= +8.0%
-      // 3. Held for at least 4 trading days (prevents premature re-entry)
+      // 2. Minimum cushion: unrealized profit >= +6.0% (guarantees net zero risk upon adding)
+      // 3. Held for at least 3 trading days
       const daysHeld = existingHolding.buyDate
         ? Math.max(1, Math.round((new Date(simDate) - new Date(existingHolding.buyDate)) / (1000 * 60 * 60 * 24)))
         : 5;
 
-      if (existingHolding.isAccumulated || (existingHolding.profitPercent || 0) < 8.0 || daysHeld < 4) {
+      if (existingHolding.isAccumulated || (existingHolding.profitPercent || 0) < 6.0 || daysHeld < 3) {
         continue; // Cannot add to this holding
       }
       isAccumulationCandidate = true;
     }
 
-    // Sector limit: max 1 position per sector for new entries (except ETFs) to eliminate correlated sector drawdowns
-    if (!isAccumulationCandidate && stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= 1) {
+    // Sector limit: max 2 positions per sector for new entries (allows capturing top 2 leaders in hot sectors like Defense or Auto)
+    const maxPerSector = 2;
+    if (!isAccumulationCandidate && stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= maxPerSector) {
       continue;
     }
 
@@ -597,27 +600,34 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     // ----------------------------------------------------------------
     // STRATEGY 1: Volume-Confirmed Breakout (Institutional Grade)
     // Buy confirmed 20-day high breakouts with genuine volume surge.
-    // This is the primary, highest-probability profit engine.
+    // Supports both high-beta equities and commodity ETFs (Gold & Silver).
     // ----------------------------------------------------------------
     const dayMove = prevClose > 0 ? (currentClose - prevClose) / prevClose : 0;
+    const isMetalETF = stock.sector === 'Precious Metals';
+    const minDayMove = isMetalETF ? 0.003 : 0.014;
+    const minRvol = isMetalETF ? 1.10 : 1.75;
+    const minRsExcess = isMetalETF ? -0.05 : 0.03;
+    const minRsi = isMetalETF ? 46 : 52;
 
     if (
       breakout20.isBullishBreakout &&
       currentClose > ema20 &&
       (ema50 ? ema20 >= ema50 * 0.995 : true) && // Strict: 20 EMA must be >= 50 EMA
-      (stockReturn20d - benchmarkReturn20d) >= 0.03 && // Outperforming Nifty (Alpha Leader)
-      currentRvol >= 1.75 &&           // Confirmed institutional volume surge (filters out weak 1.2x-1.6x retail fakeouts, captures leaders like LODHA 1.8x)
-      rsiVal >= 52 && rsiVal <= 76.5 && // Sweet spot for momentum (allows leaders like LODHA 73.4 RSI, rejects exhausted entries > 76.5)
+      (stockReturn20d - benchmarkReturn20d) >= minRsExcess &&
+      currentRvol >= minRvol &&
+      rsiVal >= minRsi && rsiVal <= 78.0 &&
       currentClose >= currentOpen &&
-      clv >= 0.64 &&                   // Strong close in upper 36% of candle (no upper wick rejection)
-      dayMove >= 0.014 &&              // Minimum +1.4% expansion candle on breakout day
-      currentClose <= ema20 * 1.08 &&  // Allow breakout expansion up to 8% above 20 EMA (allows LODHA 7.5%, rejects overextended traps > 8%)
-      stockReturn10d <= 0.18           // Reject if already up >18% in 10 days
+      (isMetalETF || clv >= 0.64) &&
+      dayMove >= minDayMove &&
+      currentClose <= ema20 * 1.08 &&
+      stockReturn10d <= 0.18
     ) {
       buySignal = true;
-      strategyName = 'MOMENTUM_BREAKOUT';
-      baseScore = 88;
-      reason = `Fresh 20-day breakout with institutional volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`;
+      strategyName = isMetalETF ? 'COMMODITY_MOMENTUM' : 'MOMENTUM_BREAKOUT';
+      baseScore = isMetalETF ? 90 : 88;
+      reason = isMetalETF
+        ? `Precious Metals 20-day breakout in confirmed uptrend (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}).`
+        : `Fresh 20-day breakout with institutional volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`;
     }
 
     // Note: Secondary pre-breakout anticipations and pullbacks pruned to achieve >55% win rate on institutional breakouts
@@ -777,11 +787,16 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
       // Dynamic Profit Protection (Swing Trading Capital Preservation Ladder):
       // Level 0: At +3.0% peak gain -> Move stop loss to Breakeven (+1.2% profit cushion)
-      // Professional swing trading rule: Protect capital early without choking natural runner pullbacks
-      if (peakProfitGainPercent >= 3.0) {
+      // Note: If already partial-scaled at +1.2%, we do not overwrite the breathing room stop (-3.0%)
+      // unless price subsequently climbs back above +4.0%
+      if (peakProfitGainPercent >= 3.0 && !position.isPartialScaled) {
         const beLevel = position.buyPrice * 1.012;
         if (beLevel > position.stopLoss) position.stopLoss = beLevel;
+      } else if (position.isPartialScaled && currentGainPct >= 4.0) {
+        const beLevel = position.buyPrice * 1.00;
+        if (beLevel > position.stopLoss) position.stopLoss = beLevel;
       }
+
 
       // Level 1: At +11.0% peak gain -> Lock in +5.5% minimum profit
       if (peakProfitGainPercent >= 11.0) {
@@ -795,67 +810,135 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         if (lockProfit2 > position.stopLoss) position.stopLoss = lockProfit2;
       }
 
-      // Level 4: At +25.0% peak gain -> Lock in +17.5% minimum profit or trail EMA20
+      // Level 4: At +25.0% peak gain -> Pillar 3: Uncapped 20-Day EMA Runner
+      // Remove artificial caps and trail dynamically on the 20-day EMA to allow +40% to +80% multi-baggers
       if (peakProfitGainPercent >= 25.0) {
-        const lockProfit3 = Math.max(position.buyPrice * 1.175, dayEma20 ? dayEma20 * 0.99 : 0);
-        if (lockProfit3 > position.stopLoss) position.stopLoss = lockProfit3;
-      }
-
-      // Level 5: At +32.0% peak gain -> RUNNER MODE (trail EMA20 closely or lock +24%)
-      if (peakProfitGainPercent >= 32.0 && dayEma20) {
-        const runnerTrail = Math.max(position.buyPrice * 1.240, dayEma20 * 0.99);
+        const runnerTrail = dayEma20 ? dayEma20 * 0.99 : position.buyPrice * 1.18;
         if (runnerTrail > position.stopLoss) position.stopLoss = runnerTrail;
       }
 
-      // 1. Check Stop-Loss / Trailing Stop Trigger
+      // Level 5: At +35.0% peak gain -> Tighten EMA20 trail to capture apex of big runs
+      if (peakProfitGainPercent >= 35.0 && dayEma20) {
+        const runnerTrail = dayEma20 * 0.995;
+        if (runnerTrail > position.stopLoss) position.stopLoss = runnerTrail;
+      }
+
+      // --- 1. Partial Scale-Out at Breakeven (+1.2% Cushion) ---
+      // If trailing stop (+1.2%) is breached and position has >= 2 shares and hasn't scaled out yet:
+      // Sell 50% to lock profit, and set remaining 50% stop loss to -3.0% to give room for runner continuation
       const isTrailingStop = position.stopLoss > position.buyPrice;
-      // Trailing stop: triggers strictly on daily closing price below stop (prevents intraday wick shakeouts on runners)
       const trailingBreach = close <= position.stopLoss;
-      // Hard initial stop: triggers if low touches stop (GTC stop order at broker for capital preservation)
       const initialBreach = close <= position.stopLoss || low <= position.stopLoss;
 
-      if (isTrailingStop ? trailingBreach : initialBreach) {
+      let partialSellQty = 0;
+      let partialSellReason = '';
+
+      if (isTrailingStop && trailingBreach && !position.isPartialScaled && position.quantity >= 2 && position.stopLoss <= position.buyPrice * 1.015) {
+        partialSellQty = Math.floor(position.quantity * 0.5);
+        partialSellReason = '50% Profit Locked @ +1.2% (Breathing Room SL set to -3%)';
+      }
+      // Full Stop or Full Trailing Exit
+      else if (isTrailingStop ? trailingBreach : initialBreach) {
         triggerSell = true;
         sellPrice = (dayBar.open && dayBar.open < position.stopLoss) ? dayBar.open : position.stopLoss;
         sellReason = isTrailingStop ? 'Trailing Profit Locked' : 'Stop Loss Triggered';
       }
-      // 1b. Early Failed Breakout Cut:
-      // If held 3-4 days and immediately breaking down (<= -2.4%, RSI < 50, below 20 EMA), cut early to prevent full -4.8% stopouts
+      // 1b. Early Failed Breakout Cut
       else if (tradingDaysHeld >= 3 && tradingDaysHeld <= 4 && currentGainPct <= -2.4 && stockRsi < 50 && dayEma20 && close < dayEma20) {
         triggerSell = true;
         sellPrice = close;
         sellReason = `Early Failed Breakout Exit (${tradingDaysHeld}d held, ${currentGainPct.toFixed(1)}%)`;
       }
-      // 2. Stagnation / Time Stop:
-      // Active swing trades must show follow-through within 6 trading days.
-      // If negative (< -1.0%) and trading below 20 EMA, cut early to prevent full stopouts.
+      // 2. Stagnation / Time Stop
       else if (tradingDaysHeld >= 6 && currentGainPct < -1.0 && dayEma20 && close < dayEma20) {
         triggerSell = true;
         sellPrice = close;
         sellReason = `Stagnation Time-Stop (${tradingDaysHeld}d held, ${currentGainPct.toFixed(1)}%)`;
       }
-      // 2b. Dead-Money Time Stop: If held for >= 14 trading days with zero progress (<= 0.0%), exit on close
-      else if (tradingDaysHeld >= 14 && currentGainPct <= 0.0) {
+      // 2b. Dead-Money Time Stop (Pillar 5): Free up capital faster if stock stalls at <= 0.5% after 8 trading days
+      else if (tradingDaysHeld >= 8 && currentGainPct <= 0.5) {
         triggerSell = true;
         sellPrice = close;
         sellReason = `Stagnation Dead-Money Exit (${tradingDaysHeld}d held, ${currentGainPct.toFixed(1)}%)`;
       }
-      // 2c. Failed Breakout Follow-Through Protection:
-      // If a swing trade achieved +4.0% peak gain, but subsequently loses momentum and closes below 20 EMA:
-      // Exit immediately on the close (locking remaining gain or near breakeven) before turning into a full stopout.
-      else if (peakProfitGainPercent >= 4.0 && dayEma20 && close < dayEma20) {
+      // 2c. Failed Breakout Follow-Through Protection (Only for early pops under 10% that immediately collapse below 20 EMA)
+      else if (peakProfitGainPercent >= 4.0 && peakProfitGainPercent < 10.0 && dayEma20 && close < dayEma20) {
         triggerSell = true;
         sellPrice = close;
         sellReason = `Failed Follow-Through (Peaked +${peakProfitGainPercent.toFixed(1)}%, closed below 20 EMA)`;
       }
-      // 3. Parabolic Climax Blow-Off Exit
-      else if (currentGainPct >= 20.0 && stockRsi >= 82 && dayEma20 && close > dayEma20 * 1.12) {
-        triggerSell = true;
-        sellPrice = close;
-        sellReason = `Parabolic Climax Blow-Off (${stockRsi.toFixed(1)} RSI, +${currentGainPct.toFixed(1)}%) Profit Taken`;
+      // 3. Parabolic Climax Blow-Off: Sell 50% to lock explosive gain, let remaining 50% ride on regular trailing rules (EMA20)
+      else if (!position.isClimaxScaled && currentGainPct >= 20.0 && stockRsi >= 82 && dayEma20 && close > dayEma20 * 1.12) {
+        if (position.quantity >= 2) {
+          partialSellQty = Math.floor(position.quantity * 0.5);
+          partialSellReason = `Parabolic Climax 50% Profit Taken (${stockRsi.toFixed(1)} RSI, +${currentGainPct.toFixed(1)}%)`;
+        } else {
+          triggerSell = true;
+          sellPrice = close;
+          sellReason = `Parabolic Climax Blow-Off (${stockRsi.toFixed(1)} RSI, +${currentGainPct.toFixed(1)}%) Profit Taken`;
+        }
       }
 
-      if (triggerSell) {
+      // Handle Partial Sell (50%)
+      if (partialSellQty > 0) {
+        const pSellPrice = close;
+        const pRevenue = partialSellQty * pSellPrice;
+        const pCost = partialSellQty * position.buyPrice;
+        const pProfit = pRevenue - pCost;
+        const pProfitPercent = (pProfit / pCost) * 100;
+
+        state.cash += pRevenue;
+        position.quantity -= partialSellQty;
+
+        if (partialSellReason.includes('Breathing Room')) {
+          position.isPartialScaled = true;
+          // Set breathing room stop loss for remaining shares to -3.0% from original entry
+          position.stopLoss = position.buyPrice * 0.97;
+        } else if (partialSellReason.includes('Parabolic Climax')) {
+          position.isClimaxScaled = true;
+          // Trail remaining shares on EMA20
+          position.stopLoss = Math.max(position.stopLoss, dayEma20 ? dayEma20 * 0.99 : position.buyPrice * 1.15);
+        }
+
+        state.history.push({
+          symbol: position.symbol,
+          name: position.name,
+          sector: position.sector,
+          quantity: partialSellQty,
+          buyPrice: position.buyPrice,
+          sellPrice: pSellPrice,
+          buyDate: position.buyDate,
+          sellDate: simDate,
+          profit: pProfit,
+          profitPercent: pProfitPercent,
+          reason: partialSellReason,
+          buyReason: position.buyReason,
+          strategy: position.strategy || 'UNKNOWN',
+          score: position.score || 0,
+          accumulated: position.isAccumulated || false
+        });
+
+        todayTransactions.push({
+          type: 'SELL',
+          symbol: position.symbol,
+          quantity: partialSellQty,
+          price: pSellPrice,
+          profit: pProfit,
+          profitPercent: pProfitPercent,
+          reason: partialSellReason
+        });
+
+        console.log(`[${simDate}] PARTIAL SOLD ${partialSellQty}x ${position.symbol} @ ₹${pSellPrice.toFixed(2)} (${partialSellReason}). P&L: ₹${pProfit.toFixed(2)} (+${pProfitPercent.toFixed(1)}%). Remaining: ${position.quantity} shares, SL: ₹${position.stopLoss.toFixed(2)}`);
+
+        // Update remaining position
+        position.currentPrice = close;
+        position.value = position.quantity * close;
+        position.profit = position.value - (position.quantity * position.buyPrice);
+        position.profitPercent = (position.profit / (position.quantity * position.buyPrice)) * 100;
+        remainingHoldings.push(position);
+      }
+      // Handle Full Sell
+      else if (triggerSell) {
         const revenue = position.quantity * sellPrice;
         const cost = position.quantity * position.buyPrice;
         const profit = revenue - cost;
@@ -976,10 +1059,18 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
       // --- BRANCH B: NEW POSITION PURCHASE ---
       const availableSlots = Math.max(1, state.config.maxPositions - state.holdings.length);
-      // Smart dynamic position sizing: allocate ~8% to 10% per position (max 10% single stock cap)
-      const maxSinglePositionCap = totalPortfolioValue * 0.10;
-      const targetPositionSize = Math.max(4000, Math.min(maxSinglePositionCap, (state.cash - minCashReserve) / availableSlots));
-      const minAllocationFloor = Math.min(3500, totalPortfolioValue * 0.035);
+
+      // Pillar 2: Asymmetric Conviction Sizing:
+      // Grade A+ Institutional Breakouts (Score >= 93) get 14%-15% capital allocation cap to supercharge compounding.
+      // Standard setups (Score < 93) get 10% allocation cap to control baseline portfolio risk.
+      const isHighConviction = (targetStock.score || 0) >= 93;
+      const maxSinglePositionCap = totalPortfolioValue * (isHighConviction ? 0.15 : 0.10);
+      const slotBudget = (state.cash - minCashReserve) / availableSlots;
+      const targetPositionSize = Math.max(
+        5000,
+        Math.min(maxSinglePositionCap, isHighConviction ? slotBudget * 1.35 : slotBudget)
+      );
+      const minAllocationFloor = Math.min(4000, totalPortfolioValue * 0.04);
       if (state.cash < minAllocationFloor + minCashReserve) return false;
 
       const capitalAllocation = Math.min(targetPositionSize, state.cash - minCashReserve);
@@ -1026,8 +1117,12 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     for (const h of state.holdings) currentHoldingsValue += h.value;
     const totalPortVal = state.cash + currentHoldingsValue;
     const cashRatio = totalPortVal > 0 ? (state.cash / totalPortVal) : 1;
-    // Disciplined buying pace: allow up to 2 best ideas per day in BULLISH markets when cash is available (cashRatio > 0.18)
-    const maxBuysToday = (marketRegime.regime === 'BULLISH' && cashRatio > 0.18) ? 2 : 1;
+    // Disciplined buying pace: allow up to 4 best ideas per day in BULLISH markets when cash is abundant (cashRatio > 0.20), else 2
+    const maxBuysToday = (marketRegime.regime === 'BULLISH' && cashRatio > 0.20)
+      ? 4
+      : (marketRegime.regime === 'BULLISH')
+        ? 2
+        : 1;
     let todayBuysCount = 0;
 
     for (const targetStock of candidates) {
