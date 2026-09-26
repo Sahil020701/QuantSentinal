@@ -10,6 +10,7 @@ const RANGES = [
   { label: '6M', days: 180 },
   { label: 'YTD', days: null, ytd: true },
   { label: '1Y', days: 365 },
+  { label: '3Y', days: 1095 },
   { label: 'All', days: null },
 ];
 
@@ -43,18 +44,39 @@ export default function DashboardTab({ portfolio }) {
 
   // Latest valuation details
   const latestValuation = valuationHistory[valuationHistory.length - 1] || {
-    totalValue: 50000.0,
+    totalValue: 100000.0,
     profitPercent: 0.0,
-    totalDeposited: 50000.0,
+    totalDeposited: 100000.0,
     holdingsValue: 0.0,
   };
 
   const totalValue = latestValuation.totalValue;
   const holdingsValue = latestValuation.holdingsValue || 0;
   const profitPercent = latestValuation.profitPercent || 0;
-  const totalDeposited = latestValuation.totalDeposited || 50000.0;
+  const totalDeposited = latestValuation.totalDeposited || 100000.0;
   const netProfit = totalValue - totalDeposited;
   const activeCount = holdings.length;
+
+  // ── Mutual Fund Style Annualized Return (CAGR) ───────────────────────────
+  // CAGR = (End Value / Start Capital) ^ (365 / daysElapsed) - 1
+  const firstValuation = valuationHistory[0] || latestValuation;
+  const cagrMetrics = useMemo(() => {
+    if (!firstValuation.date || !latestValuation.date) return { cagr: profitPercent, days: 0, years: 0 };
+    const dStart = new Date(firstValuation.date);
+    const dEnd = new Date(latestValuation.date);
+    const diffDays = Math.max(1, Math.round((dEnd - dStart) / (1000 * 60 * 60 * 24)));
+    const years = diffDays / 365.25;
+
+    if (years < (30 / 365.25) || totalDeposited <= 0) {
+      // Under 1 month: annualized figures produce distorted extrapolations, show absolute ROI
+      return { cagr: profitPercent, isAbsolute: true, days: diffDays, years };
+    }
+
+    // Compound Annual Growth Rate on initial capital
+    const endVal = Math.max(0, totalValue);
+    const cagr = (Math.pow(endVal / totalDeposited, 1 / years) - 1) * 100;
+    return { cagr, isAbsolute: false, days: diffDays, years };
+  }, [firstValuation, latestValuation, totalValue, totalDeposited, profitPercent]);
 
   // ── Filtered chart data ─────────────────────────────────────────────────
   const selectedRange = RANGES.find(r => r.label === activeRange) || RANGES[RANGES.length - 1];
@@ -125,7 +147,19 @@ export default function DashboardTab({ portfolio }) {
             {netProfit >= 0 ? '+' : ''}₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className={`kpi-sub ${profitPercent >= 0 ? 'positive' : 'negative'}`}>
-            {profitPercent >= 0 ? '▲' : '▼'} {Math.abs(profitPercent).toFixed(2)}% ROI (excl. deposits)
+            {profitPercent >= 0 ? '▲' : '▼'} {Math.abs(profitPercent).toFixed(2)}% Absolute Return
+          </div>
+        </div>
+
+        <div className="kpi-card green">
+          <div className="kpi-label">Annualized Return (CAGR)</div>
+          <div className="kpi-value" style={{ color: cagrMetrics.cagr >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {cagrMetrics.cagr >= 0 ? '+' : ''}{cagrMetrics.cagr.toFixed(2)}%
+          </div>
+          <div className="kpi-sub neutral">
+            {cagrMetrics.isAbsolute
+              ? `${cagrMetrics.days} days active`
+              : `Annualized (${cagrMetrics.years.toFixed(1)}Y compound)`}
           </div>
         </div>
 
@@ -141,7 +175,7 @@ export default function DashboardTab({ portfolio }) {
           <div className="kpi-label">Active Holdings</div>
           <div className="kpi-value">{activeCount} / {portfolio.config.maxPositions}</div>
           <div className="kpi-sub neutral">
-            Invested Value: ₹{holdingsValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            Invested: ₹{holdingsValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
       </div>
@@ -290,6 +324,12 @@ export default function DashboardTab({ portfolio }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Stop Loss:</span>
               <span style={{ fontWeight: '600', color: 'var(--red)' }}>-{portfolio.config.stopLossPercent * 100}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Annualized Return:</span>
+              <span style={{ fontWeight: '600', color: cagrMetrics.cagr >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {cagrMetrics.cagr >= 0 ? '+' : ''}{cagrMetrics.cagr.toFixed(2)}% p.a.
+              </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Total Completed Trades:</span>

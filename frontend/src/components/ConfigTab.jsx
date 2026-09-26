@@ -31,14 +31,23 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
   };
 
   const todayStr = getTodayStr();
-  const [selectedStartDate, setSelectedStartDate] = useState('2026-07-01');
+  const [selectedStartDate, setSelectedStartDate] = useState('2023-09-01');
   const [autoReplay, setAutoReplay] = useState(true);
 
+  const getPastDateStr = (yearsAgo) => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - yearsAgo);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const datePresets = [
-    { label: 'July 1 (Baseline)', value: '2026-07-01' },
-    { label: 'Aug 1, 2026', value: '2026-08-01' },
-    { label: 'Aug 17 (Dip)', value: '2026-08-17' },
-    { label: 'Sept 1, 2026', value: '2026-09-01' },
+    { label: '3Y Ago (Full Cycle)', value: getPastDateStr(3) },
+    { label: '2Y Ago', value: getPastDateStr(2) },
+    { label: '1Y Ago', value: getPastDateStr(1) },
+    { label: '6M Ago', value: getPastDateStr(0.5 ? 0 : 0) === todayStr ? '2026-03-26' : '2026-03-26' },
     { label: 'Today (Clean Slate)', value: todayStr }
   ];
 
@@ -116,8 +125,8 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
   const handleResetCustomDate = async (targetDate = selectedStartDate, replay = autoReplay) => {
     const isToday = targetDate === 'today' || targetDate === todayStr;
     const confirmMessage = isToday
-      ? `Are you sure you want to reset the simulation starting TODAY (${todayStr})?\n\nAll current trade history, active holdings, and logs will be wiped. The account will start fresh today with initial ₹50,000 cash.`
-      : `Are you sure you want to reset the simulation to start on ${targetDate}?\n\nAll current trade history, active holdings, and logs will be wiped, returning account cash to initial ₹50,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
+      ? `Are you sure you want to reset the simulation starting TODAY (${todayStr})?\n\nAll current trade history, active holdings, and logs will be wiped. The account will start fresh today with initial ₹1,00,000 cash.`
+      : `Are you sure you want to reset the simulation to start on ${targetDate}?\n\nAll current trade history, active holdings, and logs will be wiped, returning account cash to initial ₹1,00,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
 
     if (!window.confirm(confirmMessage)) return;
 
@@ -319,7 +328,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                     <input 
                       type="date" 
                       value={selectedStartDate}
-                      min="2025-01-01"
+                      min="2022-01-01"
                       max={todayStr}
                       onChange={(e) => setSelectedStartDate(e.target.value)}
                       className="config-input"

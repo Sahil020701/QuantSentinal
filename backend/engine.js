@@ -71,24 +71,24 @@ loadWatchlist();
 // Default initial state starting July 1, 2026
 const INITIAL_STATE = {
   lastSimulationDate: '2026-07-01',
-  cash: 50000.0,
+  cash: 100000.0,
   holdings: [],
   history: [],
   valuationHistory: [
     {
       date: '2026-07-01',
-      cash: 50000.0,
+      cash: 100000.0,
       holdingsValue: 0.0,
-      totalValue: 50000.0,
+      totalValue: 100000.0,
       profitPercent: 0.0,
-      totalDeposited: 50000.0
+      totalDeposited: 100000.0
     }
   ],
   logs: [
     {
       date: '2026-07-01',
       sentiment: 'NEUTRAL',
-      text: "Quant Sentinal Aggressive Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and oversold rebounds. Current simulation baseline set to 2026-07-01. Ready for market scanning and execution."
+      text: "Quant Sentinal Aggressive Trading System online. Initial capital of ₹1,00,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and oversold rebounds. Current simulation baseline set to 2026-07-01. Ready for market scanning and execution."
     }
   ],
   config: {
@@ -151,24 +151,24 @@ async function resetSimulation(customStartDate) {
   const state = {
     ...JSON.parse(JSON.stringify(INITIAL_STATE)),
     lastSimulationDate: startDate,
-    cash: 50000.0,
+    cash: 100000.0,
     holdings: [],
     history: [],
     valuationHistory: [
       {
         date: startDate,
-        cash: 50000.0,
+        cash: 100000.0,
         holdingsValue: 0.0,
-        totalValue: 50000.0,
+        totalValue: 100000.0,
         profitPercent: 0.0,
-        totalDeposited: 50000.0
+        totalDeposited: 100000.0
       }
     ],
     logs: [
       {
         date: startDate,
         sentiment: 'NEUTRAL',
-        text: `Quant Sentinal Trading System online. Initial capital of ₹50,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
+        text: `Quant Sentinal Trading System online. Initial capital of ₹1,00,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
       }
     ]
   };
@@ -187,36 +187,38 @@ function formatUTCDate(date) {
 
 let activeUpdatePromise = null;
 
-function hasBarForDate(dataObj, targetDate) {
+function hasBarsForRange(dataObj, minStartDate, targetEndDate) {
   if (!dataObj || typeof dataObj !== 'object') return false;
-  if (!targetDate) return true;
   const testSymbols = ['RELIANCE.NS', 'NIFTYBEES.NS', '^NSEI', 'HDFCBANK.NS', 'TCS.NS', 'INFY.NS'];
   for (const sym of testSymbols) {
     const bars = dataObj[sym];
     if (bars && Array.isArray(bars) && bars.length > 0) {
+      const firstBarDate = bars[0].date;
       const lastBarDate = bars[bars.length - 1].date;
-      return lastBarDate >= targetDate;
+      const coversEnd = !targetEndDate || lastBarDate >= targetEndDate;
+      const coversStart = !minStartDate || firstBarDate <= minStartDate;
+      if (coversEnd && coversStart) return true;
     }
   }
   return false;
 }
 
 // Fetch and Store Yahoo Finance Data via Python yfinance helper script into in-memory runtime cache
-async function updateCache(endDateStr, forceRefresh = false) {
+async function updateCache(endDateStr, forceRefresh = false, minStartDateStr = null) {
   const todayStr = formatUTCDate(new Date());
 
-  // 1. Check in-memory market data first (ensure it contains the target bar)
+  // 1. Check in-memory market data first (ensure it contains both start and target bars)
   if (
     !forceRefresh &&
     inMemoryMarketData &&
     inMemoryMarketData.data &&
     Object.keys(inMemoryMarketData.data).length > 0 &&
-    hasBarForDate(inMemoryMarketData.data, endDateStr)
+    hasBarsForRange(inMemoryMarketData.data, minStartDateStr, endDateStr)
   ) {
     return inMemoryMarketData.data;
   }
 
-  // 2. Check MongoDB MarketData collection before running Python fetch (ensure it contains target bar)
+  // 2. Check MongoDB MarketData collection before running Python fetch (ensure it contains both bars)
   if (!forceRefresh && mongoose.connection && mongoose.connection.readyState === 1) {
     try {
       const doc = await MarketDataModel.findOne({ key: 'daily_bars' }).lean();
@@ -224,7 +226,7 @@ async function updateCache(endDateStr, forceRefresh = false) {
         doc &&
         doc.data &&
         Object.keys(doc.data).length > 0 &&
-        hasBarForDate(doc.data, endDateStr)
+        hasBarsForRange(doc.data, minStartDateStr, endDateStr)
       ) {
         inMemoryMarketData = doc;
         if (doc.watchlist && Array.isArray(doc.watchlist) && doc.watchlist.length > 0) {
@@ -249,9 +251,9 @@ async function updateCache(endDateStr, forceRefresh = false) {
   activeUpdatePromise = (async () => {
     console.log("Market data outdated or missing. Fetching live market data using Python yfinance script...");
 
-    // Dynamically calculate start date (365 days lookback to ensure 50+ trading bars for technical indicators)
+    // Dynamically calculate start date (1250 days lookback to support up to 3+ years of historical backtesting with buffer for 50+ bar indicators)
     const endD = new Date(endDateStr);
-    const startD = new Date(endD.getTime() - (365 * 24 * 60 * 60 * 1000));
+    const startD = new Date(endD.getTime() - (1250 * 24 * 60 * 60 * 1000));
     const startDateStr = formatUTCDate(startD);
     // Determine Python executable (prefer isolated backend venv if available)
     const venvUnix = path.join(__dirname, 'venv', 'bin', 'python3');
@@ -415,7 +417,7 @@ function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, trans
  * Evaluate broad market regime based on benchmark ETF / index (e.g. NIFTYBEES.NS or RELIANCE.NS)
  */
 function evaluateMarketRegime(simDate, cachedData) {
-  const benchmarkData = cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
   if (!benchmarkData || benchmarkData.length === 0) {
     return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT', return5d: 0 };
   }
@@ -432,16 +434,11 @@ function evaluateMarketRegime(simDate, cachedData) {
   const rsiArr = calculateRSI(closes, 14);
 
   const currClose = closes[closes.length - 1];
-  const prevClose1 = closes[closes.length - 2] || currClose;
-  const prevClose2 = closes[closes.length - 3] || prevClose1;
   const close5dAgo = closes[Math.max(0, closes.length - 6)];
-  const close10dAgo = closes[Math.max(0, closes.length - 11)];
   const return5d = (currClose - close5dAgo) / close5dAgo;
-  const return10d = (currClose - close10dAgo) / close10dAgo;
 
   const ema20 = ema20Arr[ema20Arr.length - 1];
   const ema50 = ema50Arr[ema50Arr.length - 1];
-  const ema50Slope = calculateSlope(ema50Arr, 10);
   const rsi = rsiArr[rsiArr.length - 1] || 50;
 
   // 1. Confirmed RISK_OFF: Benchmark is below 20 EMA, or benchmark 5d return is negative, or RSI < 48
@@ -687,7 +684,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
 // Core Simulation Function
 async function runSimulation(targetEndDateStr, forceRefresh = false) {
   const state = await loadState();
-  const cachedData = await updateCache(targetEndDateStr, forceRefresh);
+  const cachedData = await updateCache(targetEndDateStr, forceRefresh, state.lastSimulationDate);
 
   const lastRunDateStr = state.lastSimulationDate;
   if (!forceRefresh && lastRunDateStr >= targetEndDateStr) {
@@ -695,14 +692,14 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     return state;
   }
 
-  // Find all unique trading dates from a highly liquid stock (RELIANCE.NS) to get the market calendar
-  const relianceData = cachedData['RELIANCE.NS'];
-  if (!relianceData || relianceData.length === 0) {
-    throw new Error("Failed to load historical data for calendar baseline (RELIANCE.NS).");
+  // Find all unique trading dates from True Benchmark Index (^NSEI / NIFTYBEES.NS), fallback to RELIANCE.NS
+  const calendarData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  if (!calendarData || calendarData.length === 0) {
+    throw new Error("Failed to load historical data for calendar baseline.");
   }
 
   // Extract dates that are greater than lastRunDateStr and <= targetEndDateStr
-  const tradingDates = relianceData
+  const tradingDates = calendarData
     .map(row => row.date)
     .filter(date => date > lastRunDateStr && date <= targetEndDateStr)
     .sort();
@@ -716,31 +713,24 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
   // Track total deposited capital and monthly injection transitions
   let currentTotalDeposited = (state.valuationHistory && state.valuationHistory.length > 0)
-    ? (state.valuationHistory[state.valuationHistory.length - 1].totalDeposited || 50000.0)
-    : 50000.0;
+    ? (state.valuationHistory[state.valuationHistory.length - 1].totalDeposited || 100000.0)
+    : 100000.0;
 
-  // Track month key (YYYY-MM) of last deposit to prevent duplicate deposits in the same month
-  let lastDepositMonthKey = state.lastSimulationDate ? state.lastSimulationDate.slice(0, 7) : '2026-07';
+  // Track month key (YYYY-MM) of last deposit
+  let lastDepositMonthKey = state.lastSimulationDate ? state.lastSimulationDate.slice(0, 7) : null;
 
   // We loop day-by-day through the new trading dates
   for (const simDate of tradingDates) {
     const todayTransactions = [];
 
-    // --- 1. Monthly Deposit Check (Deposit automatically on 1st trading day of each new month) ---
-    const currentMonthKey = simDate.slice(0, 7); // e.g. '2026-09'
+    // --- 1. Monthly Deposit Check (Disabled: playing with 1L fixed starting capital) ---
+    const currentMonthKey = simDate.slice(0, 7);
 
-    if (currentMonthKey !== lastDepositMonthKey) {
-      const depositAmount = 20000.0;
+    if (false && currentMonthKey !== lastDepositMonthKey) {
+      const depositAmount = 0.0;
       state.cash += depositAmount;
       currentTotalDeposited += depositAmount;
       lastDepositMonthKey = currentMonthKey;
-
-      todayTransactions.push({
-        type: 'DEPOSIT',
-        amount: depositAmount,
-        reason: 'Monthly Contribution (1st of Month)'
-      });
-      console.log(`[${simDate}] Deposited monthly ₹${depositAmount.toLocaleString('en-IN')}. Cash: ₹${state.cash.toFixed(2)}, Total Deposited: ₹${currentTotalDeposited.toFixed(2)}`);
     }
 
     // --- 2. Portfolio Sell Checks (Evaluate active holdings) ---
@@ -1045,11 +1035,12 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
       const isAccumulation = targetStock.isAccumulation;
 
-      // Broad Market Regime Gate:
+      // Broad Market Regime Gate (Enhanced Cash Preservation):
       // In RISK_OFF: Protect cash — strictly block new speculative swing buys during broad market corrections
       if (!isAccumulation && marketRegime.regime === 'RISK_OFF') {
         continue;
       }
+
       // Anti-Choppiness Gate: In NEUTRAL regimes, do not buy if 5-day market return is negative
       if (!isAccumulation && marketRegime.regime === 'NEUTRAL') {
         if (marketRegime.return5d < 0) continue;
@@ -1595,7 +1586,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         };
       }
     }
-    
+
     if (!executionStatus) {
       // Evaluate strict Strategy 1 live execution criteria
       const dayMove = prevClose > 0 ? (currentClose - prevClose) / prevClose : 0;
