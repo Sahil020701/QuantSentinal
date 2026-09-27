@@ -253,9 +253,9 @@ async function updateCache(endDateStr, forceRefresh = false, minStartDateStr = n
   activeUpdatePromise = (async () => {
     console.log("Market data outdated or missing. Fetching live market data using Python yfinance script...");
 
-    // Dynamically calculate start date (1250 days lookback to support up to 3+ years of historical backtesting with buffer for 50+ bar indicators)
+    // Dynamically calculate start date (450 days lookback = 1Y max backtest window + ~85 day buffer for 50+ bar indicator warmup)
     const endD = new Date(endDateStr);
-    const startD = new Date(endD.getTime() - (1250 * 24 * 60 * 60 * 1000));
+    const startD = new Date(endD.getTime() - (450 * 24 * 60 * 60 * 1000));
     const startDateStr = formatUTCDate(startD);
     // Determine Python executable (prefer isolated backend venv if available)
     const venvUnix = path.join(__dirname, 'venv', 'bin', 'python3');

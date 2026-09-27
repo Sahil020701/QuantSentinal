@@ -13,7 +13,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
   // Local state for manual deposit
   const [depositAmount, setDepositAmount] = useState('');
-  
+
   // Action status indicators
   const [saving, setSaving] = useState(false);
   const [depositing, setDepositing] = useState(false);
@@ -31,23 +31,30 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
   };
 
   const todayStr = getTodayStr();
-  const [selectedStartDate, setSelectedStartDate] = useState('2023-09-01');
-  const [autoReplay, setAutoReplay] = useState(true);
 
-  const getPastDateStr = (yearsAgo) => {
+  const getPastDateStr = (daysAgo) => {
     const d = new Date();
-    d.setFullYear(d.getFullYear() - yearsAgo);
+    d.setDate(d.getDate() - daysAgo);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
 
+  const getYTDStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-01-01`;
+  };
+
+  const default1YDate = getPastDateStr(365);
+  const [selectedStartDate, setSelectedStartDate] = useState(default1YDate);
+  const [autoReplay, setAutoReplay] = useState(true);
+
   const datePresets = [
-    { label: '3Y Ago (Full Cycle)', value: getPastDateStr(3) },
-    { label: '2Y Ago', value: getPastDateStr(2) },
-    { label: '1Y Ago', value: getPastDateStr(1) },
-    { label: '6M Ago', value: getPastDateStr(0.5 ? 0 : 0) === todayStr ? '2026-03-26' : '2026-03-26' },
+    { label: '1Y Ago', value: getPastDateStr(365) },
+    { label: 'YTD', value: getYTDStr() },
+    { label: '6M Ago', value: getPastDateStr(180) },
+    { label: '3M Ago', value: getPastDateStr(90) },
     { label: 'Today (Clean Slate)', value: todayStr }
   ];
 
@@ -161,7 +168,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
+
       {/* Alert Messages banner */}
       {message && (
         <div style={{
@@ -186,8 +193,8 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
           <form onSubmit={handleSaveConfig} className="config-group">
             <div className="config-item">
               <label>Aggressiveness Mode</label>
-              <select 
-                className="config-select" 
+              <select
+                className="config-select"
                 value={aggressiveness}
                 onChange={(e) => setAggressiveness(e.target.value)}
               >
@@ -202,11 +209,11 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
             <div className="config-item">
               <label>Target Profit Threshold</label>
               <div className="config-slider-row">
-                <input 
-                  type="range" 
-                  min="5" 
-                  max="30" 
-                  value={targetProfit} 
+                <input
+                  type="range"
+                  min="5"
+                  max="30"
+                  value={targetProfit}
                   onChange={(e) => setTargetProfit(Number(e.target.value))}
                   className="config-slider"
                 />
@@ -218,11 +225,11 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
             <div className="config-item">
               <label>Stop Loss Threshold</label>
               <div className="config-slider-row">
-                <input 
-                  type="range" 
-                  min="2" 
-                  max="15" 
-                  value={stopLoss} 
+                <input
+                  type="range"
+                  min="2"
+                  max="15"
+                  value={stopLoss}
                   onChange={(e) => setStopLoss(Number(e.target.value))}
                   className="config-slider"
                 />
@@ -233,10 +240,10 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
             <div className="config-item">
               <label>Max Concurrent Holdings</label>
-              <input 
-                type="number" 
-                min="2" 
-                max="50" 
+              <input
+                type="number"
+                min="2"
+                max="50"
                 value={maxPositions}
                 onChange={(e) => setMaxPositions(e.target.value)}
                 className="config-input"
@@ -252,7 +259,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
         {/* Administration and Controls */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          
+
           {/* Capital Injection */}
           <div className="glass-panel">
             <div className="panel-header">
@@ -262,9 +269,9 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
               <div className="config-item">
                 <label>Deposit Amount (₹)</label>
                 <div className="config-input-row">
-                  <input 
-                    type="number" 
-                    placeholder="e.g. 50000" 
+                  <input
+                    type="number"
+                    placeholder="e.g. 50000"
                     value={depositAmount}
                     onChange={(e) => setDepositAmount(e.target.value)}
                     className="config-input"
@@ -285,9 +292,9 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
             </div>
             <div className="config-group">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <button 
-                  onClick={handleTriggerRun} 
-                  className="btn btn-primary" 
+                <button
+                  onClick={handleTriggerRun}
+                  className="btn btn-primary"
                   style={{ width: '100%' }}
                   disabled={running || resetting}
                 >
@@ -305,9 +312,9 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                     <label style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>
                       Reset Simulation & Start Date
                     </label>
-                    <span style={{ 
-                      fontSize: '0.75rem', 
-                      padding: '0.2rem 0.55rem', 
+                    <span style={{
+                      fontSize: '0.75rem',
+                      padding: '0.2rem 0.55rem',
                       borderRadius: '5px',
                       background: selectedStartDate === todayStr ? 'var(--green-glow)' : 'var(--accent-glow)',
                       color: selectedStartDate === todayStr ? 'var(--green)' : 'var(--accent)',
@@ -325,10 +332,10 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   {/* Date Input */}
                   <div className="config-item" style={{ marginTop: '0.1rem' }}>
                     <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Choose Start Date (YYYY-MM-DD)</label>
-                    <input 
-                      type="date" 
+                    <input
+                      type="date"
                       value={selectedStartDate}
-                      min="2022-01-01"
+                      min={default1YDate}
                       max={todayStr}
                       onChange={(e) => setSelectedStartDate(e.target.value)}
                       className="config-input"
@@ -357,17 +364,17 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
                   {/* Auto-Replay Toggle */}
                   {selectedStartDate !== todayStr && (
-                    <label style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.55rem', 
-                      cursor: 'pointer', 
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.55rem',
+                      cursor: 'pointer',
                       fontSize: '0.825rem',
                       color: 'var(--text-secondary)',
                       marginTop: '0.15rem'
                     }}>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={autoReplay}
                         onChange={(e) => setAutoReplay(e.target.checked)}
                         disabled={resetting || running}
@@ -378,18 +385,18 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   )}
 
                   {/* Reset Action Button */}
-                  <button 
-                    onClick={() => handleResetCustomDate(selectedStartDate, autoReplay)} 
-                    className="btn btn-danger" 
+                  <button
+                    onClick={() => handleResetCustomDate(selectedStartDate, autoReplay)}
+                    className="btn btn-danger"
                     style={{ width: '100%', marginTop: '0.35rem', fontWeight: '600' }}
                     disabled={resetting || running || !selectedStartDate}
                   >
-                    {resetting 
-                      ? "Resetting & Replaying Simulation..." 
-                      : selectedStartDate === todayStr 
-                        ? "Reset to Today (Clean Slate ₹50k)" 
-                        : autoReplay 
-                          ? `Reset & Run Backtest from ${selectedStartDate}` 
+                    {resetting
+                      ? "Resetting & Replaying Simulation..."
+                      : selectedStartDate === todayStr
+                        ? "Reset to Today (Clean Slate ₹50k)"
+                        : autoReplay
+                          ? `Reset & Run Backtest from ${selectedStartDate}`
                           : `Reset Baseline to ${selectedStartDate}`
                     }
                   </button>

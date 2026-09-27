@@ -27,7 +27,7 @@
   min-height: 100vh;
   background-color: var(--bg-main);
   background-image: radial-gradient(circle at 10% 10%, rgba(37, 99, 235, 0.02) 0%, transparent 40%),
-                    radial-gradient(circle at 90% 90%, rgba(22, 163, 74, 0.02) 0%, transparent 40%);
+    radial-gradient(circle at 90% 90%, rgba(22, 163, 74, 0.02) 0%, transparent 40%);
   padding: 1.5rem;
   max-width: 1440px;
   margin: 0 auto;
@@ -104,9 +104,20 @@
 }
 
 @keyframes pulse {
-  0% { transform: scale(0.95); opacity: 0.5; }
-  50% { transform: scale(1.1); opacity: 1; }
-  100% { transform: scale(0.95); opacity: 0.5; }
+  0% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
 }
 
 /* Tabs */
@@ -176,10 +187,21 @@
   background: var(--text-muted);
 }
 
-.kpi-card.accent::before { background: var(--accent); }
-.kpi-card.green::before { background: var(--green); }
-.kpi-card.red::before { background: var(--red); }
-.kpi-card.amber::before { background: var(--amber); }
+.kpi-card.accent::before {
+  background: var(--accent);
+}
+
+.kpi-card.green::before {
+  background: var(--green);
+}
+
+.kpi-card.red::before {
+  background: var(--red);
+}
+
+.kpi-card.amber::before {
+  background: var(--amber);
+}
 
 .kpi-label {
   font-size: 0.85rem;
@@ -201,9 +223,17 @@
   font-weight: 500;
 }
 
-.kpi-sub.positive { color: var(--green); }
-.kpi-sub.negative { color: var(--red); }
-.kpi-sub.neutral { color: var(--text-muted); }
+.kpi-sub.positive {
+  color: var(--green);
+}
+
+.kpi-sub.negative {
+  color: var(--red);
+}
+
+.kpi-sub.neutral {
+  color: var(--text-muted);
+}
 
 /* Panels */
 .grid-2col {
@@ -472,8 +502,13 @@
   font-weight: 500;
 }
 
-.scanner-change.positive { color: var(--green); }
-.scanner-change.negative { color: var(--red); }
+.scanner-change.positive {
+  color: var(--green);
+}
+
+.scanner-change.negative {
+  color: var(--red);
+}
 
 .scanner-metrics {
   display: grid;
@@ -510,9 +545,17 @@
   padding-top: 0.5rem;
 }
 
-.scanner-rec.buy { color: var(--green); }
-.scanner-rec.sell { color: var(--red); }
-.scanner-rec.hold { color: var(--text-secondary); }
+.scanner-rec.buy {
+  color: var(--green);
+}
+
+.scanner-rec.sell {
+  color: var(--red);
+}
+
+.scanner-rec.hold {
+  color: var(--text-secondary);
+}
 
 /* Buttons & Inputs */
 .btn {
@@ -797,8 +840,13 @@
   margin-top: 0.25rem;
 }
 
-.ledger-summary-val.positive { color: var(--green); }
-.ledger-summary-val.negative { color: var(--red); }
+.ledger-summary-val.positive {
+  color: var(--green);
+}
+
+.ledger-summary-val.negative {
+  color: var(--red);
+}
 
 /* SVG Chart details */
 .chart-svg {
@@ -887,7 +935,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ========================================================

@@ -3,15 +3,10 @@ import MiniChart from './MiniChart';
 
 // ── Time-range definitions ──────────────────────────────────────────────────
 const RANGES = [
-  { label: '1D', days: 1 },
-  { label: '1W', days: 7 },
-  { label: '1M', days: 30 },
   { label: '3M', days: 90 },
   { label: '6M', days: 180 },
   { label: 'YTD', days: null, ytd: true },
   { label: '1Y', days: 365 },
-  { label: '3Y', days: 1095 },
-  { label: 'All', days: null },
 ];
 
 function filterByRange(history, range) {
@@ -39,7 +34,7 @@ function filterByRange(history, range) {
 
 export default function DashboardTab({ portfolio }) {
   const { cash, holdings, valuationHistory } = portfolio;
-  const [activeRange, setActiveRange] = useState('All');
+  const [activeRange, setActiveRange] = useState('1Y');
   const [chartMode, setChartMode] = useState('total'); // 'total' | 'invested'
 
   // Latest valuation details
@@ -98,7 +93,7 @@ export default function DashboardTab({ portfolio }) {
   // Ensure each history item has plAmt (totalValue - totalDeposited) and plPct (profitPercent)
   const chartData = useMemo(() => {
     return filteredHistory.map(item => {
-      const dep = item.totalDeposited || 50000;
+      const dep = item.totalDeposited || 100000;
       const tv = item.totalValue || 0;
       return {
         ...item,

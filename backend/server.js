@@ -6,11 +6,11 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const { 
-  loadState, 
-  saveState, 
-  resetSimulation, 
-  runSimulation, 
+const {
+  loadState,
+  saveState,
+  resetSimulation,
+  runSimulation,
   reEvaluateHoldings,
   deployIdleCash,
   getWatchlistQuotes,
@@ -36,7 +36,7 @@ function getLatestTradingDateIST() {
   const istNow = new Date(now.getTime() + istOffset);
 
   const dayOfWeek = istNow.getUTCDay(); // 0=Sun, 6=Sat in IST
-  const istHHMM   = istNow.getUTCHours() * 100 + istNow.getUTCMinutes();
+  const istHHMM = istNow.getUTCHours() * 100 + istNow.getUTCMinutes();
 
   const pad = (n) => String(n).padStart(2, '0');
   const toDateStr = (d) =>
@@ -65,7 +65,7 @@ app.get('/api/portfolio', async (req, res) => {
   try {
     const todayStr = getTodayUTCDateString();
     console.log(`GET /api/portfolio requested. Attempting catch-up simulation to ${todayStr}...`);
-    
+
     // Automatically catch up to today
     const state = await runSimulation(todayStr);
     res.json(state);
@@ -133,8 +133,13 @@ app.post('/api/reset', async (req, res) => {
   try {
     const { startDate, replay = true } = req.body || {};
     const todayStr = getTodayUTCDateString();
-    const targetStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2023-09-01');
-    
+    const d1y = new Date();
+    d1y.setFullYear(d1y.getFullYear() - 1);
+    const oneYearAgoStr = `${d1y.getFullYear()}-${String(d1y.getMonth() + 1).padStart(2, '0')}-${String(d1y.getDate()).padStart(2, '0')}`;
+    // Enforce max 1Y backtest window — clamp any date older than 1Y ago (free-tier constraint)
+    let rawStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || oneYearAgoStr);
+    const targetStartDate = rawStartDate < oneYearAgoStr ? oneYearAgoStr : rawStartDate;
+
     console.log(`Resetting simulation baseline to ${targetStartDate} (replay=${replay})...`);
     let state = await resetSimulation(targetStartDate);
 
@@ -154,10 +159,10 @@ app.post('/api/reset', async (req, res) => {
 // POST Update Configurations
 app.post('/api/config', async (req, res) => {
   try {
-    const { 
-      targetProfitPercent, 
-      stopLossPercent, 
-      maxPositions, 
+    const {
+      targetProfitPercent,
+      stopLossPercent,
+      maxPositions,
       aggressiveness,
       rotationEnabled,
       rotationMinCandidateScore,
@@ -182,7 +187,7 @@ app.post('/api/config', async (req, res) => {
         console.log(`Retroactively updated targetPrice/stopLoss for ${state.holdings.length} open holdings.`);
       }
     }
-    
+
     if (rotationEnabled !== undefined) state.config.rotationEnabled = Boolean(rotationEnabled);
     if (rotationMinCandidateScore !== undefined) state.config.rotationMinCandidateScore = Number(rotationMinCandidateScore);
     if (rotationMaxUnderperformerProfit !== undefined) state.config.rotationMaxUnderperformerProfit = Number(rotationMaxUnderperformerProfit);
@@ -221,10 +226,10 @@ app.post('/api/deposit', async (req, res) => {
 
     const state = await loadState();
     state.cash += Number(amount);
-    
+
     // Update the last history element to adjust totalDeposited
     const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
-    const currentDeposits = lastVal ? lastVal.totalDeposited : 50000.0;
+    const currentDeposits = lastVal ? lastVal.totalDeposited : 100000.0;
     const newDeposits = currentDeposits + Number(amount);
 
     if (lastVal) {
@@ -268,7 +273,7 @@ async function runAutomatedEngineCycle(forceRefresh = false) {
 
 function startTradingScheduler() {
   console.log("Starting Quant Sentinal Automated Trading Scheduler...");
-  
+
   // 1. Execute immediately on startup catchup (fast boot using cache)
   runAutomatedEngineCycle(false);
 
