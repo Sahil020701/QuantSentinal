@@ -22,6 +22,8 @@ export default function ScannerTab() {
   const [error, setError] = useState(null);
   const [selectedStock, setSelectedStock] = useState(null);
   const [selectedSector, setSelectedSector] = useState('ALL');
+  const [selectedCap, setSelectedCap] = useState('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchQuotes();
@@ -64,9 +66,16 @@ export default function ScannerTab() {
   }
 
   const sectors = ['ALL', ...new Set(quotes.map(q => q.sector).filter(Boolean))];
-  const filteredQuotes = selectedSector === 'ALL' 
-    ? quotes 
-    : quotes.filter(q => q.sector === selectedSector);
+  const caps = ['ALL', 'Large Cap', 'Mid Cap', 'Small Cap'];
+
+  const filteredQuotes = quotes.filter(q => {
+    const matchesSector = selectedSector === 'ALL' || q.sector === selectedSector;
+    const matchesCap = selectedCap === 'ALL' || (q.cap && q.cap === selectedCap);
+    const matchesSearch = !searchTerm ||
+      q.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      q.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSector && matchesCap && matchesSearch;
+  });
 
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -81,6 +90,44 @@ export default function ScannerTab() {
           <button onClick={fetchQuotes} className="btn btn-secondary" style={{ fontSize: '0.85rem' }}>
             Refresh Market Data
           </button>
+        </div>
+
+        {/* Market Cap & Search Filter Bar */}
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}>
+          {/* Quick search input */}
+          <div style={{ position: 'relative', flex: '1', minWidth: '200px' }}>
+            <input
+              type="text"
+              placeholder="Search ticker or company name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="config-input"
+              style={{ width: '100%', fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Market Cap Pills */}
+          <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Cap:</span>
+            {caps.map(c => (
+              <button
+                key={c}
+                className={`btn ${selectedCap === c ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                onClick={() => setSelectedCap(c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Sector Tabs Filter */}
@@ -114,9 +161,24 @@ export default function ScannerTab() {
                     <span className="stock-badge">{stock.symbol.replace('.NS', '')}</span>
                     <span className="company-name">{stock.name}</span>
                   </div>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: '600' }}>
-                    {stock.sector}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: '600' }}>
+                      {stock.sector}
+                    </span>
+                    {stock.cap && (
+                      <span style={{
+                        fontSize: '0.62rem',
+                        padding: '0.05rem 0.35rem',
+                        borderRadius: '4px',
+                        background: stock.cap === 'Large Cap' ? 'rgba(59, 130, 246, 0.1)' : stock.cap === 'Mid Cap' ? 'rgba(168, 85, 247, 0.1)' : 'rgba(234, 179, 8, 0.1)',
+                        color: stock.cap === 'Large Cap' ? '#60a5fa' : stock.cap === 'Mid Cap' ? '#c084fc' : '#facc15',
+                        border: `1px solid ${stock.cap === 'Large Cap' ? 'rgba(59, 130, 246, 0.2)' : stock.cap === 'Mid Cap' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(234, 179, 8, 0.2)'}`,
+                        fontWeight: '600'
+                      }}>
+                        {stock.cap}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="scanner-prices">
@@ -175,7 +237,7 @@ export default function ScannerTab() {
                   <span className="stock-badge" style={{ fontSize: '1.25rem' }}>{selectedStock.symbol.replace('.NS', '')}</span>
                   <span style={{ fontSize: '1.1rem', fontWeight: '500' }}>{selectedStock.name}</span>
                 </h2>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{selectedStock.sector} Sector</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{selectedStock.sector} Sector{selectedStock.cap ? ` • ${selectedStock.cap}` : ''}</span>
               </div>
               <button className="modal-close" onClick={() => setSelectedStock(null)}>×</button>
             </div>

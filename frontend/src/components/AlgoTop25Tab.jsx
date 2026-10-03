@@ -9,6 +9,7 @@ export default function AlgoTop25Tab() {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
+  const [selectedCap, setSelectedCap] = useState('ALL');
   const [minPassed, setMinPassed] = useState('ALL');
   const [displayLimit, setDisplayLimit] = useState(25);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
@@ -39,7 +40,7 @@ export default function AlgoTop25Tab() {
       <div className="spinner-container">
         <div className="spinner" />
         <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: '500' }}>
-          Scanning 300+ NSE Assets & Computing Multi-Factor Indicator Models...
+          Scanning 500+ NSE Assets (Large, Mid & Small Cap) & Computing Multi-Factor Indicator Models...
         </span>
       </div>
     );
@@ -73,6 +74,7 @@ export default function AlgoTop25Tab() {
 
   // Unique sectors for filtering (derived from all candidates)
   const sectors = ['ALL', ...new Set(allCandidates.map(s => s.sector).filter(Boolean))];
+  const caps = ['ALL', 'Large Cap', 'Mid Cap', 'Small Cap'];
 
   // Filtering
   const filteredStocks = displayedPool.filter(stock => {
@@ -80,12 +82,13 @@ export default function AlgoTop25Tab() {
       stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
       stock.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSector = selectedSector === 'ALL' || stock.sector === selectedSector;
+    const matchesCap = selectedCap === 'ALL' || (stock.cap && stock.cap === selectedCap);
     const matchesPassed =
       minPassed === 'ALL' ||
       (minPassed === '8' && stock.passedCount === 8) ||
       (minPassed === '7+' && stock.passedCount >= 7) ||
       (minPassed === '6+' && stock.passedCount >= 6);
-    return matchesSearch && matchesSector && matchesPassed;
+    return matchesSearch && matchesSector && matchesCap && matchesPassed;
   });
 
   const getRankClass = (rank) => {
@@ -219,14 +222,14 @@ export default function AlgoTop25Tab() {
             <span><strong>Failed (Reject)</strong></span>
           </div>
           <span style={{ color: 'var(--border-color-hover)' }}>|</span>
-          <span title="Price >= 20 EMA and 20 EMA >= 50 EMA"><strong>Trend:</strong> 20 &gt; 50 EMA</span>
-          <span title="Alpha >= +1.5% outperformance vs Nifty 50"><strong>RS Alpha:</strong> &gt;= +1.5% vs Nifty</span>
-          <span title="Institutional volume >= 1.50x 20-day avg"><strong>RVOL:</strong> &gt;= 1.5x Vol</span>
-          <span title="RSI between 52.0 and 76.5"><strong>RSI:</strong> 52 - 76.5 Sweet Spot</span>
+          <span title="Price >= 20 EMA, 20 EMA > 50 EMA & expanding"><strong>Trend:</strong> 20 &gt; 50 EMA</span>
+          <span title="Alpha >= +4.0% outperformance vs Nifty 50"><strong>RS Alpha:</strong> &gt;= +4.0% vs Nifty</span>
+          <span title="Institutional volume >= 1.90x 20-day avg"><strong>RVOL:</strong> &gt;= 1.9x Vol</span>
+          <span title="RSI within sweet spot (52.0 - 72.5)"><strong>RSI:</strong> 52 - 72.5 Sweet Spot</span>
           <span title="New 20-day high or within 1.5% of resistance"><strong>Breakout:</strong> 20D High Setup</span>
-          <span title="Close Location Value >= 60%"><strong>CLV:</strong> &gt;= 60% Close</span>
-          <span title="ADX >= 22.0 directional velocity"><strong>ADX:</strong> &gt;= 22 Trend Strength</span>
-          <span title="<= 8.5% above 20 EMA to avoid extended trap"><strong>Safety:</strong> &lt;= 8.5% from 20 EMA</span>
+          <span title="Close Location Value >= 68%"><strong>CLV:</strong> &gt;= 68% Close</span>
+          <span title="ADX >= 20.0 directional trend strength"><strong>ADX:</strong> &gt;= 20 Trend Strength</span>
+          <span title="<= 8.0% above 20 EMA to avoid extended trap"><strong>Safety:</strong> &lt;= 8.0% from 20 EMA</span>
         </div>
 
         {/* Filter and View Controls Toolbar */}
@@ -262,6 +265,21 @@ export default function AlgoTop25Tab() {
             >
               {sectors.map(s => (
                 <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Market Cap filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Cap:</span>
+            <select
+              value={selectedCap}
+              onChange={(e) => setSelectedCap(e.target.value)}
+              className="config-select"
+              style={{ fontSize: '0.8rem', padding: '0.45rem 0.75rem' }}
+            >
+              {caps.map(c => (
+                <option key={c} value={c}>{c}</option>
               ))}
             </select>
           </div>
@@ -371,9 +389,24 @@ export default function AlgoTop25Tab() {
                         <span className="company-name" style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {stock.name}
                         </span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                          {stock.sector}
-                        </span>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.15rem' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                            {stock.sector}
+                          </span>
+                          {stock.cap && (
+                            <span style={{
+                              fontSize: '0.62rem',
+                              padding: '0.05rem 0.35rem',
+                              borderRadius: '4px',
+                              background: stock.cap === 'Large Cap' ? 'rgba(59, 130, 246, 0.1)' : stock.cap === 'Mid Cap' ? 'rgba(168, 85, 247, 0.1)' : 'rgba(234, 179, 8, 0.1)',
+                              color: stock.cap === 'Large Cap' ? '#60a5fa' : stock.cap === 'Mid Cap' ? '#c084fc' : '#facc15',
+                              border: `1px solid ${stock.cap === 'Large Cap' ? 'rgba(59, 130, 246, 0.2)' : stock.cap === 'Mid Cap' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(234, 179, 8, 0.2)'}`,
+                              fontWeight: '600'
+                            }}>
+                              {stock.cap}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Price & Change */}
@@ -586,7 +619,7 @@ export default function AlgoTop25Tab() {
                       {stock.symbol.replace('.NS', '')}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      {stock.name} • {stock.sector}
+                      {stock.name} • {stock.sector}{stock.cap ? ` • ${stock.cap}` : ''}
                     </div>
                   </div>
                 </div>
@@ -692,7 +725,7 @@ export default function AlgoTop25Tab() {
                 <div>
                   <h2 style={{ margin: '0', fontSize: '1.25rem' }}>{inspectStock.symbol.replace('.NS', '')}</h2>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                    {inspectStock.name} • {inspectStock.sector}
+                    {inspectStock.name} • {inspectStock.sector}{inspectStock.cap ? ` • ${inspectStock.cap}` : ''}
                   </div>
                 </div>
               </div>

@@ -37,10 +37,10 @@ _setup_python_path()
 
 # Standard ETFs to include manually for macro indicators and sector indexing
 ETFS = [
-    {"symbol": "NIFTYBEES.NS", "name": "Nifty 50 ETF", "sector": "ETFs"},
-    {"symbol": "BANKBEES.NS", "name": "Nifty Bank ETF", "sector": "ETFs"},
-    {"symbol": "CPSEETF.NS", "name": "CPSE ETF", "sector": "ETFs"},
-    {"symbol": "MON100.NS", "name": "Nasdaq 100 ETF", "sector": "ETFs"}
+    {"symbol": "NIFTYBEES.NS", "name": "Nifty 50 ETF", "sector": "ETFs", "cap": "ETF"},
+    {"symbol": "BANKBEES.NS", "name": "Nifty Bank ETF", "sector": "ETFs", "cap": "ETF"},
+    {"symbol": "CPSEETF.NS", "name": "CPSE ETF", "sector": "ETFs", "cap": "ETF"},
+    {"symbol": "MON100.NS", "name": "Nasdaq 100 ETF", "sector": "ETFs", "cap": "ETF"}
 ]
 
 # Core stocks always included regardless of whether live CSV download succeeds.
@@ -210,27 +210,38 @@ def load_fallback_watchlist(output_file):
     return ETFS + CORE_BUILTIN_WATCHLIST
 
 def fetch_watchlist(output_file):
-    # Fetch from Nifty 200, Nifty Midcap 100, and Nifty Smallcap 100
+    # Fetch from Nifty 100 (Large Cap), Nifty Midcap 150 (Mid Cap), and Nifty Smallcap 250 (Small Cap)
     index_urls = [
         {
-            "name": "Nifty 200",
+            "name": "Nifty 100",
+            "cap": "Large Cap",
             "urls": [
-                'https://archives.nseindia.com/content/indices/ind_nifty200list.csv',
-                'https://niftyindices.com/IndexConstituent/ind_nifty200list.csv'
+                'https://archives.nseindia.com/content/indices/ind_nifty100list.csv',
+                'https://niftyindices.com/IndexConstituent/ind_nifty100list.csv'
             ]
         },
         {
-            "name": "Nifty Midcap 100",
+            "name": "Nifty Midcap 150",
+            "cap": "Mid Cap",
             "urls": [
-                'https://archives.nseindia.com/content/indices/ind_niftymidcap100list.csv',
-                'https://niftyindices.com/IndexConstituent/ind_niftymidcap100list.csv'
+                'https://archives.nseindia.com/content/indices/ind_niftymidcap150list.csv',
+                'https://niftyindices.com/IndexConstituent/ind_niftymidcap150list.csv'
             ]
         },
         {
-            "name": "Nifty Smallcap 100",
+            "name": "Nifty Smallcap 250",
+            "cap": "Small Cap",
             "urls": [
-                'https://archives.nseindia.com/content/indices/ind_niftysmallcap100list.csv',
-                'https://niftyindices.com/IndexConstituent/ind_niftysmallcap100list.csv'
+                'https://archives.nseindia.com/content/indices/ind_niftysmallcap250list.csv',
+                'https://niftyindices.com/IndexConstituent/ind_niftysmallcap250list.csv'
+            ]
+        },
+        {
+            "name": "Nifty 500",
+            "cap": "Equity",
+            "urls": [
+                'https://archives.nseindia.com/content/indices/ind_nifty500list.csv',
+                'https://niftyindices.com/IndexConstituent/ind_nifty500list.csv'
             ]
         }
     ]
@@ -266,7 +277,8 @@ def fetch_watchlist(output_file):
                                 combined_watchlist.append({
                                     "symbol": sym,
                                     "name": str(row[name_col]).strip(),
-                                    "sector": str(row[industry_col]).strip()
+                                    "sector": str(row[industry_col]).strip(),
+                                    "cap": index_config.get("cap", "Equity")
                                 })
                         print(f"Downloaded {index_config['name']} from {url} ({len(df)} stocks).", file=sys.stderr)
                         fetched = True
@@ -278,10 +290,10 @@ def fetch_watchlist(output_file):
             print(f"Could not fetch {index_config['name']} from any URL.", file=sys.stderr)
 
     USER_MANDATORY_STOCKS = [
-        {"symbol": "SYRMA.NS", "name": "Syrma SGS Technology Ltd.", "sector": "Capital Goods"},
-        {"symbol": "PTCIL.NS", "name": "PTC Industries Ltd.", "sector": "Capital Goods"},
-        {"symbol": "TMPV.NS", "name": "Tata Motors Passenger Vehicles Ltd.", "sector": "Automobile and Auto Components"},
-        {"symbol": "TMCV.NS", "name": "Tata Motors Commercial Vehicles Ltd.", "sector": "Capital Goods"},
+        {"symbol": "SYRMA.NS", "name": "Syrma SGS Technology Ltd.", "sector": "Capital Goods", "cap": "Small Cap"},
+        {"symbol": "PTCIL.NS", "name": "PTC Industries Ltd.", "sector": "Capital Goods", "cap": "Small Cap"},
+        {"symbol": "TMPV.NS", "name": "Tata Motors Passenger Vehicles Ltd.", "sector": "Automobile and Auto Components", "cap": "Large Cap"},
+        {"symbol": "TMCV.NS", "name": "Tata Motors Commercial Vehicles Ltd.", "sector": "Capital Goods", "cap": "Large Cap"},
     ]
     for s in USER_MANDATORY_STOCKS:
         if s["symbol"] not in seen_symbols:
@@ -289,7 +301,7 @@ def fetch_watchlist(output_file):
             combined_watchlist.append(s)
 
     if any_live_download:
-        print(f"Live universe compiled: {len(combined_watchlist)} total assets (Nifty 200 + Midcap 100 + Smallcap 100 + Priority stocks).", file=sys.stderr)
+        print(f"Live universe compiled: {len(combined_watchlist)} total assets (Nifty 100 Large + Midcap 150 + Smallcap 250 + Priority stocks).", file=sys.stderr)
         return combined_watchlist
 
     # All live downloads failed — fall back to cached/built-in watchlist (CORE_BUILTIN_WATCHLIST used here only)

@@ -24,13 +24,13 @@ const os = require('os');
 const FALLBACK_WATCHLIST_FILE = path.join(__dirname, 'data', 'watchlist_fallback.json');
 
 const DEFAULT_WATCHLIST = [
-  { symbol: 'GOLDBEES.NS', name: 'Nippon India ETF Gold BeES', sector: 'Precious Metals' },
-  { symbol: 'SILVERBEES.NS', name: 'Nippon India ETF Silver BeES', sector: 'Precious Metals' },
-  { symbol: 'RELIANCE.NS', name: 'Reliance Industries', sector: 'Energy & Conglomerate' },
-  { symbol: 'TCS.NS', name: 'Tata Consultancy Services', sector: 'IT Services' },
-  { symbol: 'HDFCBANK.NS', name: 'HDFC Bank Ltd', sector: 'Banking & Financials' },
-  { symbol: 'INFY.NS', name: 'Infosys Ltd', sector: 'IT Services' },
-  { symbol: 'SBIN.NS', name: 'State Bank of India', sector: 'Banking & Financials' }
+  { symbol: 'GOLDBEES.NS', name: 'Nippon India ETF Gold BeES', sector: 'Precious Metals', cap: 'ETF' },
+  { symbol: 'SILVERBEES.NS', name: 'Nippon India ETF Silver BeES', sector: 'Precious Metals', cap: 'ETF' },
+  { symbol: 'RELIANCE.NS', name: 'Reliance Industries', sector: 'Energy & Conglomerate', cap: 'Large Cap' },
+  { symbol: 'TCS.NS', name: 'Tata Consultancy Services', sector: 'IT Services', cap: 'Large Cap' },
+  { symbol: 'HDFCBANK.NS', name: 'HDFC Bank Ltd', sector: 'Banking & Financials', cap: 'Large Cap' },
+  { symbol: 'INFY.NS', name: 'Infosys Ltd', sector: 'IT Services', cap: 'Large Cap' },
+  { symbol: 'SBIN.NS', name: 'State Bank of India', sector: 'Banking & Financials', cap: 'Large Cap' }
 ];
 
 const WATCHLIST = [];
@@ -604,20 +604,21 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     // ----------------------------------------------------------------
     const dayMove = prevClose > 0 ? (currentClose - prevClose) / prevClose : 0;
     const isMetalETF = stock.sector === 'Precious Metals';
-    const minDayMove = isMetalETF ? 0.003 : 0.014;
-    const minRvol = isMetalETF ? 1.10 : 1.75;
-    const minRsExcess = isMetalETF ? -0.05 : 0.03;
+    const minDayMove = isMetalETF ? 0.003 : 0.018;
+    const minRvol = isMetalETF ? 1.10 : 1.90;
+    const minRsExcess = isMetalETF ? -0.05 : 0.04;
     const minRsi = isMetalETF ? 46 : 52;
 
     if (
       breakout20.isBullishBreakout &&
       currentClose > ema20 &&
-      (ema50 ? ema20 >= ema50 * 0.995 : true) && // Strict: 20 EMA must be >= 50 EMA
+      (ema50 ? (ema20 >= ema50 * 1.01 && ema20Slope > 0) : true) && // Strict: 20 EMA must be expanding above 50 EMA with positive slope
       (stockReturn20d - benchmarkReturn20d) >= minRsExcess &&
       currentRvol >= minRvol &&
-      rsiVal >= minRsi && rsiVal <= 78.0 &&
+      rsiVal >= minRsi && rsiVal <= 72.5 && // Sweet spot: eliminates overbought exhaustion traps > 72.5
+      (isMetalETF || currentAdx >= 20) && // Mandatory trend strength: eliminates choppy sideways noise
       currentClose >= currentOpen &&
-      (isMetalETF || clv >= 0.64) &&
+      (isMetalETF || clv >= 0.68) && // Strong candle finish in top 32% of daily range
       dayMove >= minDayMove &&
       currentClose <= ema20 * 1.08 &&
       stockReturn10d <= 0.18
@@ -630,7 +631,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
         : `Fresh 20-day breakout with institutional volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`;
     }
 
-    // Note: Secondary pre-breakout anticipations and pullbacks pruned to achieve >55% win rate on institutional breakouts
+    // Note: Secondary pre-breakout anticipations and pullbacks pruned to achieve high-conviction institutional breakouts
 
     if (buySignal) {
       // --- Multi-Factor Confluence Scoring matching High-Conviction Engine ---
@@ -652,8 +653,8 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       }
 
       const minScoreThreshold = isAccumulationCandidate
-        ? 83
-        : (marketRegime.regime === 'RISK_OFF' ? 88 : (marketRegime.regime === 'NEUTRAL' ? 85 : 80));
+        ? 84
+        : (marketRegime.regime === 'RISK_OFF' ? 92 : (marketRegime.regime === 'NEUTRAL' ? 88 : 84));
 
       if (score >= minScoreThreshold) {
         candidates.push({
@@ -855,8 +856,8 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         sellPrice = close;
         sellReason = `Stagnation Time-Stop (${tradingDaysHeld}d held, ${currentGainPct.toFixed(1)}%)`;
       }
-      // 2b. Dead-Money Time Stop (Pillar 5): Free up capital faster if stock stalls at <= 0.5% after 8 trading days
-      else if (tradingDaysHeld >= 8 && currentGainPct <= 0.5) {
+      // 2b. Dead-Money Time Stop (Pillar 5): Free up capital if stock stalls at <= 0.0% below 20 EMA after 10 trading days
+      else if (tradingDaysHeld >= 10 && currentGainPct <= 0.0 && dayEma20 && close < dayEma20) {
         triggerSell = true;
         sellPrice = close;
         sellReason = `Stagnation Dead-Money Exit (${tradingDaysHeld}d held, ${currentGainPct.toFixed(1)}%)`;
@@ -1378,6 +1379,7 @@ async function getWatchlistQuotes(endDateStr) {
         symbol: stock.symbol,
         name: stock.name,
         sector: stock.sector,
+        cap: stock.cap || 'Equity',
         price: todayBar.close,
         change,
         changePercent,
@@ -1394,6 +1396,7 @@ async function getWatchlistQuotes(endDateStr) {
         symbol: stock.symbol,
         name: stock.name,
         sector: stock.sector,
+        cap: stock.cap || 'Equity',
         price: 0,
         change: 0,
         changePercent: 0,
@@ -1507,22 +1510,22 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
     const highestHigh20 = breakout20.highestHigh20 || currentHigh;
     const distFrom20dHigh = highestHigh20 > 0 ? ((highestHigh20 - currentClose) / highestHigh20) * 100 : 0;
 
-    // Indicator Evaluations (Pass/Fail)
-    const passTrend = (currentClose >= (ema20 || 0) * 0.985) && (ema50 ? ema20 >= ema50 * 0.995 : true) && (ema50Slope >= -0.005);
-    const passRS = alpha20d >= 1.5;
-    const passRvol = rvol >= 1.5;
-    const passRSI = rsi >= 52 && rsi <= 76.5;
+    // Indicator Evaluations (Pass/Fail matching Stricter High-Conviction Criteria)
+    const passTrend = (currentClose >= (ema20 || 0)) && (ema50 ? ema20 >= ema50 * 1.01 && ema20Slope > 0 : true) && (ema50Slope >= 0);
+    const passRS = alpha20d >= 4.0;
+    const passRvol = rvol >= 1.9;
+    const passRSI = rsi >= 52 && rsi <= 72.5;
     const passBreakout = breakout20.isBullishBreakout || distFrom20dHigh <= 1.5;
-    const passCLV = clv >= 0.60;
-    const passADX = adx >= 22;
-    const passSafety = distFromEma20 >= -1.5 && distFromEma20 <= 8.5 && stockReturn10d <= 0.18;
+    const passCLV = clv >= 0.68;
+    const passADX = adx >= 20;
+    const passSafety = distFromEma20 >= -1.0 && distFromEma20 <= 8.0 && stockReturn10d <= 0.18;
 
     const indicators = [
       {
         id: 'trend',
         name: 'Stage 2 Trend',
         shortName: 'Trend',
-        criteria: 'Price >= 20 EMA and 20 EMA >= 50 EMA',
+        criteria: 'Price >= 20 EMA, 20 EMA > 50 EMA & rising',
         value: ema20 && ema50 ? `EMA20 > EMA50` : `EMA20: ₹${(ema20 || 0).toFixed(0)}`,
         metric: `₹${(ema20 || 0).toFixed(0)} / ₹${(ema50 || 0).toFixed(0)}`,
         passed: Boolean(passTrend)
@@ -1531,7 +1534,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'rs',
         name: 'Relative Strength',
         shortName: 'RS Alpha',
-        criteria: 'Alpha >= +1.5% outperformance vs Nifty 50',
+        criteria: 'Alpha >= +4.0% outperformance vs Nifty 50',
         value: `${alpha20d >= 0 ? '+' : ''}${alpha20d.toFixed(1)}%`,
         metric: `${alpha20d >= 0 ? '+' : ''}${alpha20d.toFixed(1)}% vs Nifty`,
         passed: Boolean(passRS)
@@ -1540,7 +1543,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'rvol',
         name: 'Volume Surge',
         shortName: 'RVOL',
-        criteria: 'Institutional volume >= 1.50x 20-day avg',
+        criteria: 'Institutional volume >= 1.90x 20-day avg',
         value: `${rvol.toFixed(1)}x`,
         metric: `${rvol.toFixed(2)}x Vol`,
         passed: Boolean(passRvol)
@@ -1549,7 +1552,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'rsi',
         name: 'RSI Momentum',
         shortName: 'RSI',
-        criteria: 'RSI within sweet spot (52.0 - 76.5)',
+        criteria: 'RSI within sweet spot (52.0 - 72.5)',
         value: `${rsi.toFixed(1)}`,
         metric: `${rsi.toFixed(1)} RSI`,
         passed: Boolean(passRSI)
@@ -1567,7 +1570,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'clv',
         name: 'CLV Pressure',
         shortName: 'CLV',
-        criteria: 'Close Location Value >= 60% (upper candle range)',
+        criteria: 'Close Location Value >= 68% (upper candle range)',
         value: `${(clv * 100).toFixed(0)}%`,
         metric: `${(clv * 100).toFixed(0)}% Range`,
         passed: Boolean(passCLV)
@@ -1576,7 +1579,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'adx',
         name: 'ADX Velocity',
         shortName: 'ADX',
-        criteria: 'ADX >= 22.0 (Confirmed directional trend)',
+        criteria: 'ADX >= 20.0 (Confirmed directional trend)',
         value: `${adx.toFixed(1)}`,
         metric: `${adx.toFixed(1)} ADX`,
         passed: Boolean(passADX)
@@ -1771,6 +1774,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
       symbol: stock.symbol,
       name: stock.name,
       sector: stock.sector,
+      cap: stock.cap || 'Equity',
       price: currentClose,
       change: dayChange,
       changePercent: dayChangePercent,
