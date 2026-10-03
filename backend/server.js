@@ -103,24 +103,14 @@ function getLatestTradingDateIST() {
 // Backwards-compatible alias used throughout server routes
 const getTodayUTCDateString = getLatestTradingDateIST;
 
-// GET Portfolio (Includes automated catch-up simulation)
+// GET Portfolio (Instant response)
 app.get('/api/portfolio', async (req, res) => {
   try {
-    const todayStr = getTodayUTCDateString();
-    console.log(`GET /api/portfolio requested. Attempting catch-up simulation to ${todayStr}...`);
-
-    // Automatically catch up to today
-    const state = await runSimulation(todayStr);
+    const state = await loadState();
     res.json(state);
   } catch (error) {
     console.error("Error in GET /api/portfolio:", error);
-    // Return current state even if catch-up failed, to prevent UI crash
-    try {
-      const state = await loadState();
-      res.json(state);
-    } catch (e) {
-      res.status(500).json({ error: "Failed to load state", details: error.message });
-    }
+    res.status(500).json({ error: "Failed to load state", details: error.message });
   }
 });
 
@@ -176,12 +166,10 @@ app.post('/api/reset', async (req, res) => {
   try {
     const { startDate, replay = true } = req.body || {};
     const todayStr = getTodayUTCDateString();
-    const d1y = new Date();
-    d1y.setFullYear(d1y.getFullYear() - 1);
-    const oneYearAgoStr = `${d1y.getFullYear()}-${String(d1y.getMonth() + 1).padStart(2, '0')}-${String(d1y.getDate()).padStart(2, '0')}`;
-    // Enforce max 1Y backtest window — clamp any date older than 1Y ago (free-tier constraint)
-    let rawStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || oneYearAgoStr);
-    const targetStartDate = rawStartDate < oneYearAgoStr ? oneYearAgoStr : rawStartDate;
+    const minHistoryDateStr = '2019-01-01';
+    // Support historical backtesting from 2019 through current session
+    let rawStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2023-10-01');
+    const targetStartDate = rawStartDate < minHistoryDateStr ? minHistoryDateStr : rawStartDate;
 
     console.log(`Resetting simulation baseline to ${targetStartDate} (replay=${replay})...`);
     let state = await resetSimulation(targetStartDate);
@@ -301,16 +289,31 @@ app.post('/api/deposit', async (req, res) => {
   }
 });
 
+let isSchedulerRunning = false;
+
 // Automated Background Scheduler for Market Open & Trigger Execution
 async function runAutomatedEngineCycle(forceRefresh = false) {
+  if (isSchedulerRunning) return;
+  isSchedulerRunning = true;
   try {
     const todayStr = getTodayUTCDateString();
-    console.log(`[AUTOMATED SCHEDULER] Running engine cycle for date ${todayStr}...`);
-    let state = await runSimulation(todayStr, forceRefresh);
-    state = await deployIdleCash(todayStr);
-    console.log(`[AUTOMATED SCHEDULER] Cycle complete. Last simulation date: ${state.lastSimulationDate}`);
+    let state = await loadState();
+    // Only run daily catchup if state is within 14 days of today (prevents locking up startup on multi-year baselines)
+    if (state.lastSimulationDate < todayStr) {
+      const diffDays = (new Date(todayStr) - new Date(state.lastSimulationDate)) / (1000 * 60 * 60 * 24);
+      if (diffDays <= 14) {
+        console.log(`[AUTOMATED SCHEDULER] Running daily engine catch-up for ${todayStr}...`);
+        state = await runSimulation(todayStr, forceRefresh);
+        state = await deployIdleCash(todayStr);
+        console.log(`[AUTOMATED SCHEDULER] Cycle complete. Last simulation date: ${state.lastSimulationDate}`);
+      } else {
+        console.log(`[AUTOMATED SCHEDULER] State baseline is historical (${state.lastSimulationDate}). Skipping blocking auto-catchup. Use Config Tab Reset to replay.`);
+      }
+    }
   } catch (error) {
     console.error("[AUTOMATED SCHEDULER] Error during engine cycle execution:", error.message);
+  } finally {
+    isSchedulerRunning = false;
   }
 }
 

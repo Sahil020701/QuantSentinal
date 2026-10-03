@@ -150,8 +150,21 @@ async function saveState(state) {
 // Reset state
 async function resetSimulation(customStartDate) {
   const startDate = customStartDate || '2026-07-01';
+  let activeConfig = INITIAL_STATE.config;
+  if (inMemoryState && inMemoryState.config) {
+    activeConfig = { ...INITIAL_STATE.config, ...inMemoryState.config };
+  } else if (mongoose.connection.readyState === 1) {
+    try {
+      const doc = await StateModel.findOne({ key: 'simulation_state' }).lean();
+      if (doc && doc.config) {
+        activeConfig = { ...INITIAL_STATE.config, ...doc.config };
+      }
+    } catch (_) {}
+  }
+
   const state = {
     ...JSON.parse(JSON.stringify(INITIAL_STATE)),
+    config: activeConfig,
     lastSimulationDate: startDate,
     cash: 100000.0,
     holdings: [],
@@ -170,7 +183,7 @@ async function resetSimulation(customStartDate) {
       {
         date: startDate,
         sentiment: 'NEUTRAL',
-        text: `Quant Sentinal Trading System online. Initial capital of ₹1,00,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
+        text: `Quant Sentinal Trading System online (${activeConfig.aggressiveness === 'conservative' ? 'Conservative Approach' : 'Aggressive Approach'}). Initial capital of ₹1,00,000 deposited. Objective: Target 15%-20% annualized returns using momentum breakouts and smart support rebounds. Current simulation baseline set to ${startDate}. Ready for market scanning and execution.`
       }
     ]
   };
@@ -197,7 +210,11 @@ function hasBarsForRange(dataObj, minStartDate, targetEndDate) {
     if (bars && Array.isArray(bars) && bars.length > 0) {
       const firstBarDate = bars[0].date;
       const lastBarDate = bars[bars.length - 1].date;
-      const coversEnd = !targetEndDate || lastBarDate >= targetEndDate;
+      // Allow up to 4 calendar days gap for weekends and official exchange holidays (e.g. Gandhi Jayanti + weekend)
+      const daysDiffEnd = targetEndDate
+        ? (new Date(targetEndDate) - new Date(lastBarDate)) / (1000 * 60 * 60 * 24)
+        : 0;
+      const coversEnd = !targetEndDate || lastBarDate >= targetEndDate || (daysDiffEnd >= 0 && daysDiffEnd <= 4);
       const coversStart = !minStartDate || firstBarDate <= minStartDate;
       if (coversEnd && coversStart) return true;
     }
@@ -255,6 +272,23 @@ async function updateCache(endDateStr, forceRefresh = false, minStartDateStr = n
       }
     } catch (e) {
       console.warn("MongoDB MarketData cache read warning:", e.message);
+    }
+  }
+
+  // 3. Check local 5Y historical market data file (enables instant offline 1Y, 2Y, 3Y, 5Y backtesting)
+  if (!forceRefresh) {
+    const local5yPath = path.join(__dirname, 'data', 'market_data_5y.json');
+    if (fs.existsSync(local5yPath)) {
+      try {
+        const localData = JSON.parse(fs.readFileSync(local5yPath, 'utf8'));
+        if (hasBarsForRange(localData, minStartDateStr, endDateStr)) {
+          console.log(`Loaded 5-year offline market data (${Object.keys(localData).length} symbols) for backtesting.`);
+          inMemoryMarketData = { data: localData, watchlist: WATCHLIST };
+          return localData;
+        }
+      } catch (err) {
+        console.warn("Could not read local market_data_5y.json:", err.message);
+      }
     }
   }
 
@@ -433,7 +467,7 @@ function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, trans
 /**
  * Evaluate broad market regime based on benchmark ETF / index (e.g. NIFTYBEES.NS or RELIANCE.NS)
  */
-function evaluateMarketRegime(simDate, cachedData) {
+function evaluateMarketRegime(simDate, cachedData, isConservative = false) {
   const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
   if (!benchmarkData || benchmarkData.length === 0) {
     return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT', return5d: 0 };
@@ -458,9 +492,16 @@ function evaluateMarketRegime(simDate, cachedData) {
   const ema50 = ema50Arr[ema50Arr.length - 1];
   const rsi = rsiArr[rsiArr.length - 1] || 50;
 
-  // 1. Confirmed RISK_OFF: Benchmark is below 20 EMA, or benchmark 5d return is negative, or RSI < 48
-  if ((ema20 && currClose < ema20) || return5d < -0.008 || (rsi < 48)) {
-    return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN', return5d };
+  if (isConservative) {
+    // Strict capital preservation: benchmark below 20 EMA, or negative 5d return, or RSI < 48
+    if ((ema20 && currClose < ema20) || return5d < -0.008 || (rsi < 48)) {
+      return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN', return5d };
+    }
+  } else {
+    // High-frequency momentum: only enter RISK_OFF on significant market crash (return5d < -2% or RSI < 42)
+    if (currClose < ema20 * 0.985 && (rsi < 42 || return5d < -0.02) && (ema50 ? currClose < ema50 : true)) {
+      return { regime: 'RISK_OFF', benchmarkRsi: rsi, trend: 'DOWN', return5d };
+    }
   }
 
   // 2. Confirmed Bullish: Above 20 EMA with positive 5d return & healthy RSI
@@ -474,10 +515,11 @@ function evaluateMarketRegime(simDate, cachedData) {
 
 /**
  * Intelligent Multi-Strategy Scanner with Volume Confirmation & Multi-Factor Scoring
- * Scans universe for high-win-rate, institutional-grade swing setups.
+ * Scans universe for high-win-rate swing setups based on active strategy mode (Aggressive vs Conservative).
  */
 function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config = {}) {
-  const marketRegime = evaluateMarketRegime(simDate, cachedData);
+  const isConservative = (config?.aggressiveness === 'conservative');
+  const marketRegime = evaluateMarketRegime(simDate, cachedData, isConservative);
   const candidates = [];
 
   // Calculate benchmark 20-day return for Relative Strength filtering (NIFTY 50 index)
@@ -521,7 +563,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       isAccumulationCandidate = true;
     }
 
-    // Sector limit: max 2 positions per sector for new entries (allows capturing top 2 leaders in hot sectors like Defense or Auto)
+    // Sector limit: max 2 positions per sector for new entries
     const maxPerSector = 2;
     if (!isAccumulationCandidate && stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= maxPerSector) {
       continue;
@@ -546,7 +588,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     const currentOpen = opens[len - 1];
     const currentHigh = highs[len - 1];
     const currentLow = lows[len - 1];
-    const prevClose = closes[len - 2];
+    const prevClose = closes[len - 2] || currentClose;
 
     // Compute technical indicators (EMA + SMA + RSI + MACD + ATR + RVOL + ADX)
     const ema20Array = calculateEMA(closes, 20);
@@ -566,92 +608,55 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
     const sma20 = sma20Array[len - 1];
     const sma50 = sma50Array[len - 1];
     const rsiVal = rsiArray[len - 1];
-    const prevRsiVal = rsiArray[len - 2];
-    const macdLine = macdResult.macdLine[len - 1];
-    const signalLine = macdResult.signalLine[len - 1];
     const histogram = macdResult.histogram[len - 1];
-    const prevMacdLine = macdResult.macdLine[len - 2];
-    const prevSignalLine = macdResult.signalLine[len - 2];
-    const prevHistogram = macdResult.histogram[len - 2];
     const currentAtr = atrArray[len - 1] || (currentClose * 0.025);
     const currentRvol = rvolArray[len - 1] || 1.0;
-    const currentAdx = adxArray[len - 1] || 22; // Default to neutral trend strength if history is developing
+    const currentAdx = adxArray[len - 1] || 22;
 
     if (ema20 === null || rsiVal === null) continue;
 
-    // Filter 1: Eliminate penny stocks (price must be at least ₹50)
-    if (currentClose < 50) continue;
-
-    // Filter 2: Mandatory Stage 2 Uptrend (Strict Moving Average Alignment)
-    // Price must be above or near 20 EMA and 20 EMA must be >= 50 EMA with non-falling slope
-    if (ema50 && (ema20 < ema50 || ema50Slope < -0.005)) continue;
-    if (currentClose < ema20 * 0.985) continue; // Price cannot be broken below EMA20
-
-    // Filter 3: Relative Strength (RS) vs Benchmark — only trade market leaders
-    const lookbackBars = Math.min(20, len - 1);
-    const pastClose = closes[len - 1 - lookbackBars];
-    const stockReturn20d = pastClose > 0 ? ((currentClose - pastClose) / pastClose) : 0;
-    if (len >= 20 && (stockReturn20d < 0.02 || stockReturn20d < benchmarkReturn20d + 0.015)) continue;
-
-    // Filter 4: Reject overextended blow-offs (allow strong institutional breakouts)
-    // Reject only if already up >22% in 10 days, or extended >13% above EMA20
-    const lookback10d = Math.min(10, len - 1);
-    const close10dAgoStock = closes[len - 1 - lookback10d];
-    const stockReturn10d = close10dAgoStock > 0 ? ((currentClose - close10dAgoStock) / close10dAgoStock) : 0;
-    if (len >= 10 && stockReturn10d > 0.22) continue; // Parabolic blow-off
-    if (currentClose > ema20 * 1.13) continue; // Allow high-volume breakout candle expansion
-
-    // Candlestick Buying Pressure: Close Location Value (CLV)
     const candleRange = currentHigh - currentLow;
     const clv = candleRange > 0 ? (currentClose - currentLow) / candleRange : 0.5;
-
-    const breakout20 = checkBreakouts(closes, highs, lows, 20);
-
-    let buySignal = false;
-    let baseScore = 0;
-    let reason = '';
-    let strategyName = '';
-
-    // ----------------------------------------------------------------
-    // STRATEGY 1: Volume-Confirmed Breakout (Institutional Grade)
-    // Buy confirmed 20-day high breakouts with genuine volume surge.
-    // Supports both high-beta equities and commodity ETFs (Gold & Silver).
-    // ----------------------------------------------------------------
     const dayMove = prevClose > 0 ? (currentClose - prevClose) / prevClose : 0;
     const isMetalETF = stock.sector === 'Precious Metals';
-    const minDayMove = isMetalETF ? 0.003 : 0.018;
-    const minRvol = isMetalETF ? 1.10 : 1.90;
-    const minRsExcess = isMetalETF ? -0.05 : 0.04;
-    const minRsi = isMetalETF ? 46 : 52;
 
-    if (
-      breakout20.isBullishBreakout &&
-      currentClose > ema20 &&
-      (ema50 ? (ema20 >= ema50 * 1.01 && ema20Slope > 0) : true) && // Strict: 20 EMA must be expanding above 50 EMA with positive slope
-      (stockReturn20d - benchmarkReturn20d) >= minRsExcess &&
-      currentRvol >= minRvol &&
-      rsiVal >= minRsi && rsiVal <= 72.5 && // Sweet spot: eliminates overbought exhaustion traps > 72.5
-      (isMetalETF || currentAdx >= 20) && // Mandatory trend strength: eliminates choppy sideways noise
-      currentClose >= currentOpen &&
-      (isMetalETF || clv >= 0.68) && // Strong candle finish in top 32% of daily range
-      dayMove >= minDayMove &&
-      currentClose <= ema20 * 1.08 &&
-      stockReturn10d <= 0.18
-    ) {
-      buySignal = true;
-      strategyName = isMetalETF ? 'COMMODITY_MOMENTUM' : 'MOMENTUM_BREAKOUT';
-      baseScore = isMetalETF ? 90 : 88;
-      reason = isMetalETF
-        ? `Precious Metals 20-day breakout in confirmed uptrend (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}).`
-        : `Fresh 20-day breakout with institutional volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`;
-    }
+    const past20Close = closes[Math.max(0, len - 21)];
+    const stockReturn20d = past20Close > 0 ? ((currentClose - past20Close) / past20Close) : 0;
+    const rsExcess = stockReturn20d - benchmarkReturn20d;
 
-    // Note: Secondary pre-breakout anticipations and pullbacks pruned to achieve high-conviction institutional breakouts
+    const past10Close = closes[Math.max(0, len - 11)];
+    const stockReturn10d = past10Close > 0 ? ((currentClose - past10Close) / past10Close) : 0;
 
-    if (buySignal) {
-      // --- Multi-Factor Confluence Scoring matching High-Conviction Engine ---
-      let score = baseScore;
-      const rsExcess = stockReturn20d - benchmarkReturn20d;
+    if (isConservative) {
+      // -------------------------------------------------------------
+      // CONSERVATIVE APPROACH: Institutional 20d Breakouts (~40-41 trades/yr)
+      // Strictly trade 20-day high breakouts with 1.9x RVOL and 4% Alpha
+      // -------------------------------------------------------------
+      if (currentClose < 50 || currentClose > 75000) continue;
+      if (ema50 && (ema20 < ema50 || ema50Slope < -0.005)) continue;
+      if (currentClose < ema20 * 0.985) continue;
+      if (currentClose > ema20 * 1.08) continue;
+      if (stockReturn10d > 0.18) continue;
+
+      const minRsExcess = isMetalETF ? -0.05 : 0.040;
+      if (rsExcess < minRsExcess) continue;
+
+      const breakout20 = checkBreakouts(closes, highs, lows, 20);
+      if (!breakout20.isBullishBreakout) continue;
+
+      const minRvol = isMetalETF ? 1.10 : 1.90;
+      if (currentRvol < minRvol) continue;
+
+      const minDayMove = isMetalETF ? 0.003 : 0.018;
+      if (dayMove < minDayMove) continue;
+
+      if (currentClose < currentOpen) continue;
+      if (clv < 0.68 && !isMetalETF) continue;
+      if (rsiVal < (isMetalETF ? 46 : 52) || rsiVal > 72.5) continue;
+      if (!isMetalETF && currentAdx < 20) continue;
+      if (ema50 && (ema20 < ema50 * 1.01 || ema20Slope <= 0)) continue;
+
+      let score = isMetalETF ? 90 : 88;
       if (rsExcess >= 0.08) score += 10;
       else if (rsExcess >= 0.04) score += 7;
       if (currentRvol >= 3.0) score += 10;
@@ -662,39 +667,104 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       else if (marketRegime.regime === 'RISK_OFF') score -= 6;
       score = Math.max(50, Math.min(100, Math.round(score)));
 
-      // Accumulation candidates require elite confirmation
-      if (isAccumulationCandidate && (score < 85 || currentRvol < 1.0)) {
-        continue;
-      }
-
+      if (isAccumulationCandidate && (score < 85 || currentRvol < 1.0)) continue;
       const minScoreThreshold = isAccumulationCandidate
         ? 84
         : (marketRegime.regime === 'RISK_OFF' ? 92 : (marketRegime.regime === 'NEUTRAL' ? 88 : 84));
+      if (score < minScoreThreshold) continue;
 
-      if (score >= minScoreThreshold) {
-        candidates.push({
-          symbol: stock.symbol,
-          name: stock.name,
-          sector: stock.sector,
-          price: currentClose,
-          score: score,
-          rsGain: rsExcess,
-          reason: isAccumulationCandidate ? `[ACCUMULATE] Trend continuation in winning holding: ${reason}` : reason,
-          strategy: strategyName,
-          isAccumulation: isAccumulationCandidate,
-          parentHolding: isAccumulationCandidate ? existingHolding : null,
-          technicalStats: {
-            rsi: rsiVal,
-            sma20: sma20 || ema20,
-            sma50: sma50 || ema50,
-            ema20,
-            ema50: ema50 || ema20,
-            rvol: currentRvol,
-            atr: currentAtr,
-            macdHist: histogram || 0
-          }
-        });
-      }
+      candidates.push({
+        symbol: stock.symbol,
+        name: stock.name,
+        sector: stock.sector,
+        price: currentClose,
+        score: score,
+        rsGain: rsExcess,
+        reason: isAccumulationCandidate
+          ? `[ACCUMULATE] Trend continuation in winning holding: Institutional breakout (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)})`
+          : isMetalETF
+            ? `Precious Metals 20-day breakout in confirmed uptrend (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}).`
+            : `Fresh 20-day breakout with institutional volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`,
+        strategy: isMetalETF ? 'COMMODITY_MOMENTUM' : 'MOMENTUM_BREAKOUT',
+        isAccumulation: isAccumulationCandidate,
+        parentHolding: isAccumulationCandidate ? existingHolding : null,
+        technicalStats: {
+          rsi: rsiVal,
+          sma20: sma20 || ema20,
+          sma50: sma50 || ema50,
+          ema20,
+          ema50: ema50 || ema20,
+          rvol: currentRvol,
+          atr: currentAtr,
+          macdHist: histogram || 0
+        }
+      });
+    } else {
+      // -------------------------------------------------------------
+      // AGGRESSIVE APPROACH: Broad High-Frequency Momentum (~172 trades/yr)
+      // Captures breakouts & coiling expansions with fast capital turnover
+      // -------------------------------------------------------------
+      if (currentClose < 20 || currentClose > 75000) continue;
+      if (!ema20 || currentClose < ema20) continue;
+      if (ema50 && (ema20 < ema50 * 1.005 || currentClose < ema50)) continue;
+      if (rsExcess < 0.030) continue;
+      if (stockReturn10d > 0.18) continue;
+
+      const distFromEma20 = (currentClose - ema20) / ema20;
+      if (distFromEma20 > 0.080) continue;
+
+      const lookback20Highs = highs.slice(Math.max(0, len - 21), len - 1);
+      const highestHigh20 = lookback20Highs.length > 0 ? Math.max(...lookback20Highs) : currentClose;
+      const isNew20dHigh = currentHigh >= highestHigh20;
+      const distTo20dHigh = highestHigh20 > 0 ? (highestHigh20 - currentClose) / highestHigh20 : 0;
+      const isCoilingNearHigh = distTo20dHigh <= 0.015 && distTo20dHigh >= -0.01;
+      if (!isNew20dHigh && !isCoilingNearHigh) continue;
+
+      const minDayMove = isMetalETF ? 0.003 : 0.014;
+      const minRvol = isMetalETF ? 1.10 : 1.75;
+      if (currentRvol < minRvol) continue;
+
+      if (dayMove < minDayMove) continue;
+      if (currentClose < currentOpen) continue;
+      if (clv < 0.64) continue;
+      if (rsiVal > 76.5) continue;
+
+      let strategyName = isMetalETF ? 'COMMODITY_MOMENTUM' : (isNew20dHigh ? 'MOMENTUM_BREAKOUT' : 'COILING_BREAKOUT_EXPANSION');
+      let reason = isMetalETF
+        ? `Precious Metals momentum (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`
+        : isNew20dHigh
+          ? `Fresh 20-day breakout with volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) in confirmed uptrend.`
+          : `Coiling within 1.5% of 20-day high with volume surge (${currentRvol.toFixed(1)}x RVOL, RSI: ${rsiVal.toFixed(1)}) ready for expansion.`;
+
+      let score = 76;
+      if (isNew20dHigh && clv >= 0.70 && currentRvol >= 2.0 && rsExcess >= 0.05) score = 96;
+      else if (isNew20dHigh && currentRvol >= 1.8) score = 91;
+      else if (isCoilingNearHigh && currentRvol >= 2.0) score = 86;
+
+      if (isAccumulationCandidate && (score < 80 || currentRvol < 1.0)) continue;
+
+      candidates.push({
+        symbol: stock.symbol,
+        name: stock.name,
+        sector: stock.sector,
+        price: currentClose,
+        score: score,
+        rsGain: rsExcess,
+        reason: isAccumulationCandidate ? `[ACCUMULATE] Trend continuation in winning holding: ${reason}` : reason,
+        strategy: strategyName,
+        isAccumulation: isAccumulationCandidate,
+        parentHolding: isAccumulationCandidate ? existingHolding : null,
+        technicalStats: {
+          rsi: rsiVal,
+          sma20: sma20 || ema20,
+          sma50: sma50 || ema50,
+          ema20,
+          ema50: ema50 || ema20,
+          rvol: currentRvol,
+          atr: currentAtr,
+          macdHist: histogram || 0
+        }
+      });
     }
   }
 
@@ -1112,122 +1182,157 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     // --- Pass 1: Deploy cash to qualified scanner candidates ---
     let currentHoldingsValue = 0;
     for (const h of state.holdings) currentHoldingsValue += h.value;
-    const totalPortVal = state.cash + currentHoldingsValue;
-    const cashRatio = totalPortVal > 0 ? (state.cash / totalPortVal) : 1;
-    // Disciplined buying pace: allow up to 4 best ideas per day in BULLISH markets when cash is abundant (cashRatio > 0.20), else 2
-    const maxBuysToday = (marketRegime.regime === 'BULLISH' && cashRatio > 0.20)
-      ? 4
-      : (marketRegime.regime === 'BULLISH')
-        ? 2
-        : 1;
-    let todayBuysCount = 0;
+    const isConservative = (state.config.aggressiveness === 'conservative');
 
-    for (const targetStock of candidates) {
-      if (todayBuysCount >= maxBuysToday) break;
+    if (isConservative) {
+      // -------------------------------------------------------------------------
+      // CONSERVATIVE APPROACH: Disciplined Pacing & Capital Preservation (~40-41 trades/yr)
+      // -------------------------------------------------------------------------
+      const totalPortVal = state.cash + currentHoldingsValue;
+      const cashRatio = totalPortVal > 0 ? (state.cash / totalPortVal) : 1;
+      const maxBuysToday = (marketRegime.regime === 'BULLISH' && cashRatio > 0.20)
+        ? 4
+        : (marketRegime.regime === 'BULLISH')
+          ? 2
+          : 1;
+      let todayBuysCount = 0;
 
-      const isAccumulation = targetStock.isAccumulation;
-
-      // Broad Market Regime Gate (Enhanced Cash Preservation):
-      // In RISK_OFF: Protect cash — strictly block new speculative swing buys during broad market corrections
-      if (!isAccumulation && marketRegime.regime === 'RISK_OFF') {
-        continue;
-      }
-
-      // Anti-Choppiness Gate: In NEUTRAL regimes, do not buy if 5-day market return is negative
-      if (!isAccumulation && marketRegime.regime === 'NEUTRAL') {
-        if (marketRegime.return5d < 0) continue;
-        if (targetStock.score < 92 || (targetStock.rsGain || 0) < 0.06 || (targetStock.technicalStats?.rvol || 1) < 2.0) continue;
-      }
-
-      // Cool-off protection: If a stock was recently stopped out with a loss within the last 8 trading days, do not immediately re-enter,
-      // UNLESS it produces an exceptional institutional volume explosion (RVOL >= 2.0) proving a bear trap / shakeout reversal.
-      if (!isAccumulation) {
-        const simIdx = tradingDates.indexOf(simDate);
-        const recentLoss = state.history.some(t => {
-          if (t.symbol !== targetStock.symbol || t.profit > 0) return false;
-          const sellIdx = tradingDates.indexOf(t.sellDate);
-          if (sellIdx === -1) return false;
-          const daysSinceLoss = simIdx - sellIdx;
-          if (daysSinceLoss <= 8) {
-            // Institutional shakeout bypass: If volume is massive (RVOL >= 2.0), allow re-entry
-            if ((targetStock.technicalStats?.rvol || 1) >= 2.0) {
-              return false;
-            }
-            return true;
-          }
-          return false;
-        });
-        if (recentLoss) continue;
-      }
-
-      const availableSlots = state.config.maxPositions - state.holdings.length;
-      let canBuy = isAccumulation ? (state.cash >= 1000) : (availableSlots > 0 && state.cash >= 1000);
-
-      // Check sector limit for new purchases (with zero-risk exception)
-      let sectorLimitReached = false;
-      if (!isAccumulation && targetStock.sector !== 'ETFs') {
-        const sectorHoldings = state.holdings.filter(h => h.sector === targetStock.sector);
-        if (sectorHoldings.length >= 2) {
-          sectorLimitReached = true;
-        } else if (sectorHoldings.length === 1) {
-          // Allow 2nd position in sector ONLY if the 1st position has risk removed (stopLoss >= buyPrice)
-          if (sectorHoldings[0].stopLoss < sectorHoldings[0].buyPrice) {
-            sectorLimitReached = true;
-          }
-        }
-      }
-
-      const rotationEnabled = state.config.rotationEnabled !== false;
-      const minCandScore = state.config.rotationMinCandidateScore || 90;
-      const maxUnderperformerProfit = state.config.rotationMaxUnderperformerProfit || -1.0;
-
-      // Smart Upgrading & Rotation:
-      // If we cannot buy due to cash, full slots, OR sector limit, check if we can upgrade an underperformer
-      if (!isAccumulation && rotationEnabled && (!canBuy || sectorLimitReached || state.cash < targetStock.price) && targetStock.score >= minCandScore && state.holdings.length > 0) {
-        let worstHoldingIndex = -1;
-        let worstHoldingProfit = Infinity;
-
-        // If sector limit reached, find worst holding in the SAME sector to upgrade; otherwise find overall worst holding
-        for (let j = 0; j < state.holdings.length; j++) {
-          const h = state.holdings[j];
-          if (h.buyDate === simDate) continue;
-          if (sectorLimitReached && h.sector !== targetStock.sector) continue;
-          if (h.profitPercent < worstHoldingProfit) {
-            worstHoldingProfit = h.profitPercent;
-            worstHoldingIndex = j;
-          }
-        }
-
-        if (worstHoldingIndex !== -1 && worstHoldingProfit <= maxUnderperformerProfit) {
-          const position = state.holdings[worstHoldingIndex];
-          const stockData = cachedData[position.symbol];
-          const dayBar = stockData ? stockData.find(row => row.date === simDate) : null;
-          const sellPrice = dayBar ? dayBar.close : position.currentPrice;
-          const revenue = position.quantity * sellPrice;
-
-          if (state.cash + revenue >= targetStock.price) {
-            const cost = position.quantity * position.buyPrice;
-            const profit = revenue - cost;
-            const profitPercent = (profit / cost) * 100;
-            state.cash += revenue;
-
-            state.history.push({ symbol: position.symbol, name: position.name, sector: position.sector, quantity: position.quantity, buyPrice: position.buyPrice, sellPrice, buyDate: position.buyDate, sellDate: simDate, profit, profitPercent, reason: `Replaced by ${targetStock.symbol} (Score: ${targetStock.score.toFixed(1)})` });
-            todayTransactions.push({ type: 'SELL', symbol: position.symbol, quantity: position.quantity, price: sellPrice, profit, profitPercent, reason: `Replaced by ${targetStock.symbol}` });
-            console.log(`[${simDate}] ROTATION SELL: ${position.symbol} @ ₹${sellPrice} → ${targetStock.symbol}`);
-            state.holdings.splice(worstHoldingIndex, 1);
-            canBuy = true;
-            sectorLimitReached = false;
-          }
-        }
-      }
-
-      if (sectorLimitReached) continue;
-
-      if (canBuy && state.cash >= 1000) {
-        if (executeBuy(targetStock)) {
-          todayBuysCount++;
-        }
+      for (const targetStock of candidates) {
         if (todayBuysCount >= maxBuysToday) break;
+        const isAccumulation = targetStock.isAccumulation;
+
+        // Broad Market Regime Gate: In RISK_OFF, strictly block new swing buys
+        if (!isAccumulation && marketRegime.regime === 'RISK_OFF') continue;
+
+        // Anti-Choppiness Gate: In NEUTRAL regimes, do not buy if 5-day market return is negative
+        if (!isAccumulation && marketRegime.regime === 'NEUTRAL') {
+          if (marketRegime.return5d < 0) continue;
+          if (targetStock.score < 92 || (targetStock.rsGain || 0) < 0.06 || (targetStock.technicalStats?.rvol || 1) < 2.0) continue;
+        }
+
+        // Cool-off protection: If stopped out within last 8 trading days, do not immediately re-enter unless RVOL >= 2.0
+        if (!isAccumulation) {
+          const simIdx = tradingDates.indexOf(simDate);
+          const recentLoss = state.history.some(t => {
+            if (t.symbol !== targetStock.symbol || t.profit > 0) return false;
+            const sellIdx = tradingDates.indexOf(t.sellDate);
+            if (sellIdx === -1) return false;
+            const daysSinceLoss = simIdx - sellIdx;
+            if (daysSinceLoss <= 8) {
+              if ((targetStock.technicalStats?.rvol || 1) >= 2.0) return false;
+              return true;
+            }
+            return false;
+          });
+          if (recentLoss) continue;
+        }
+
+        const availableSlots = state.config.maxPositions - state.holdings.length;
+        let canBuy = isAccumulation ? (state.cash >= 1000) : (availableSlots > 0 && state.cash >= 1000);
+
+        // Check sector limit (max 2 positions per sector)
+        let sectorLimitReached = false;
+        if (!isAccumulation && targetStock.sector !== 'ETFs') {
+          const sectorHoldings = state.holdings.filter(h => h.sector === targetStock.sector);
+          if (sectorHoldings.length >= 2) {
+            sectorLimitReached = true;
+          } else if (sectorHoldings.length === 1) {
+            if (sectorHoldings[0].stopLoss < sectorHoldings[0].buyPrice) {
+              sectorLimitReached = true;
+            }
+          }
+        }
+
+        const rotationEnabled = state.config.rotationEnabled !== false;
+        const minCandScore = state.config.rotationMinCandidateScore || 90;
+        const maxUnderperformerProfit = state.config.rotationMaxUnderperformerProfit || -1.0;
+
+        if (!isAccumulation && rotationEnabled && (!canBuy || sectorLimitReached || state.cash < targetStock.price) && targetStock.score >= minCandScore && state.holdings.length > 0) {
+          let worstHoldingIndex = -1;
+          let worstHoldingProfit = Infinity;
+
+          for (let j = 0; j < state.holdings.length; j++) {
+            const h = state.holdings[j];
+            if (h.buyDate === simDate) continue;
+            if (sectorLimitReached && h.sector !== targetStock.sector) continue;
+            if (h.profitPercent < worstHoldingProfit) {
+              worstHoldingProfit = h.profitPercent;
+              worstHoldingIndex = j;
+            }
+          }
+
+          if (worstHoldingIndex !== -1 && worstHoldingProfit <= maxUnderperformerProfit) {
+            const position = state.holdings[worstHoldingIndex];
+            const stockData = cachedData[position.symbol];
+            const dayBar = stockData ? stockData.find(row => row.date === simDate) : null;
+            const sellPrice = dayBar ? dayBar.close : position.currentPrice;
+            const revenue = position.quantity * sellPrice;
+
+            if (state.cash + revenue >= targetStock.price) {
+              const cost = position.quantity * position.buyPrice;
+              const profit = revenue - cost;
+              const profitPercent = (profit / cost) * 100;
+              state.cash += revenue;
+
+              state.history.push({
+                symbol: position.symbol,
+                name: position.name,
+                sector: position.sector,
+                quantity: position.quantity,
+                buyPrice: position.buyPrice,
+                sellPrice,
+                buyDate: position.buyDate,
+                sellDate: simDate,
+                profit,
+                profitPercent,
+                reason: `Replaced by ${targetStock.symbol} (Score: ${targetStock.score.toFixed(1)})`
+              });
+              todayTransactions.push({
+                type: 'SELL',
+                symbol: position.symbol,
+                quantity: position.quantity,
+                price: sellPrice,
+                profit,
+                profitPercent,
+                reason: `Replaced by ${targetStock.symbol}`
+              });
+              state.holdings.splice(worstHoldingIndex, 1);
+              canBuy = true;
+              sectorLimitReached = false;
+            }
+          }
+        }
+
+        if (sectorLimitReached) continue;
+
+        if (canBuy && state.cash >= 1000) {
+          if (executeBuy(targetStock)) {
+            todayBuysCount++;
+          }
+          if (todayBuysCount >= maxBuysToday) break;
+        }
+      }
+    } else {
+      // -------------------------------------------------------------------------
+      // AGGRESSIVE APPROACH: Broad High-Frequency Momentum Execution (~172 trades/yr)
+      // -------------------------------------------------------------------------
+      // 1. First priority: Pyramiding winning positions
+      for (const cand of candidates.filter(x => x.isAccumulation)) {
+        if (state.cash < 4000) break;
+        executeBuy(cand);
+      }
+
+      // 2. Second priority: New Breakouts & Expansion setups
+      for (const targetStock of candidates.filter(x => !x.isAccumulation)) {
+        if (state.holdings.length >= state.config.maxPositions) break;
+        if (state.cash < 4000) break;
+
+        // Only block non-accumulation buys if market is in confirmed deep crash (return5d < -2.0%)
+        if (marketRegime.regime === 'RISK_OFF' && marketRegime.return5d < -0.02) {
+          continue;
+        }
+
+        executeBuy(targetStock);
       }
     }
 
@@ -1442,7 +1547,8 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
     }
   }
 
-  const marketRegime = evaluateMarketRegime(targetDate, cachedData);
+  const isConservative = (state.config?.aggressiveness === 'conservative');
+  const marketRegime = evaluateMarketRegime(targetDate, cachedData, isConservative);
 
   let benchmarkReturn20d = 0;
   if (benchmarkData && benchmarkData.length > 0) {
@@ -1520,13 +1626,13 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
     const highestHigh20 = breakout20.highestHigh20 || currentHigh;
     const distFrom20dHigh = highestHigh20 > 0 ? ((highestHigh20 - currentClose) / highestHigh20) * 100 : 0;
 
-    // Indicator Evaluations (Pass/Fail matching Stricter High-Conviction Criteria)
-    const passTrend = (currentClose >= (ema20 || 0)) && (ema50 ? ema20 >= ema50 * 1.01 && ema20Slope > 0 : true) && (ema50Slope >= 0);
-    const passRS = alpha20d >= 4.0;
-    const passRvol = rvol >= 1.9;
-    const passRSI = rsi >= 52 && rsi <= 72.5;
-    const passBreakout = breakout20.isBullishBreakout || distFrom20dHigh <= 1.5;
-    const passCLV = clv >= 0.68;
+    // Indicator Evaluations (Pass/Fail matching Active Strategy Approach)
+    const passTrend = (currentClose >= (ema20 || 0)) && (ema50 ? ema20 >= ema50 * (isConservative ? 1.01 : 1.005) : true);
+    const passRS = alpha20d >= (isConservative ? 4.0 : 3.0);
+    const passRvol = rvol >= (isConservative ? 1.90 : 1.75);
+    const passRSI = isConservative ? (rsi >= 52 && rsi <= 72.5) : (rsi >= 48 && rsi <= 76.5);
+    const passBreakout = isConservative ? breakout20.isBullishBreakout : (breakout20.isBullishBreakout || distFrom20dHigh <= 1.5);
+    const passCLV = clv >= (isConservative ? 0.68 : 0.64);
     const passADX = adx >= 20;
     const passSafety = distFromEma20 >= -1.0 && distFromEma20 <= 8.0 && stockReturn10d <= 0.18;
 
@@ -1535,7 +1641,9 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'trend',
         name: 'Stage 2 Trend',
         shortName: 'Trend',
-        criteria: 'Price >= 20 EMA, 20 EMA > 50 EMA & rising',
+        criteria: isConservative
+          ? 'Price >= 20 EMA, 20 EMA > 50 EMA by 1.0% with positive slope'
+          : 'Price >= 20 EMA, 20 EMA > 50 EMA & rising',
         value: ema20 && ema50 ? `EMA20 > EMA50` : `EMA20: ₹${(ema20 || 0).toFixed(0)}`,
         metric: `₹${(ema20 || 0).toFixed(0)} / ₹${(ema50 || 0).toFixed(0)}`,
         passed: Boolean(passTrend)
@@ -1544,7 +1652,9 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'rs',
         name: 'Relative Strength',
         shortName: 'RS Alpha',
-        criteria: 'Alpha >= +4.0% outperformance vs Nifty 50',
+        criteria: isConservative
+          ? 'Alpha >= +4.0% institutional outperformance vs Nifty 50'
+          : 'Alpha >= +3.0% outperformance vs Nifty 50',
         value: `${alpha20d >= 0 ? '+' : ''}${alpha20d.toFixed(1)}%`,
         metric: `${alpha20d >= 0 ? '+' : ''}${alpha20d.toFixed(1)}% vs Nifty`,
         passed: Boolean(passRS)
@@ -1553,7 +1663,9 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'rvol',
         name: 'Volume Surge',
         shortName: 'RVOL',
-        criteria: 'Institutional volume >= 1.90x 20-day avg',
+        criteria: isConservative
+          ? 'Institutional volume >= 1.90x 20-day avg'
+          : 'Institutional volume >= 1.75x 20-day avg',
         value: `${rvol.toFixed(1)}x`,
         metric: `${rvol.toFixed(2)}x Vol`,
         passed: Boolean(passRvol)
@@ -1562,7 +1674,9 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'rsi',
         name: 'RSI Momentum',
         shortName: 'RSI',
-        criteria: 'RSI within sweet spot (52.0 - 72.5)',
+        criteria: isConservative
+          ? 'RSI within institutional sweet spot (52.0 - 72.5)'
+          : 'RSI within expansion band (48.0 - 76.5)',
         value: `${rsi.toFixed(1)}`,
         metric: `${rsi.toFixed(1)} RSI`,
         passed: Boolean(passRSI)
@@ -1571,7 +1685,9 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'breakout',
         name: '20D Breakout',
         shortName: 'Breakout',
-        criteria: 'New 20-day high or within 1.5% of resistance',
+        criteria: isConservative
+          ? 'Confirmed 20-day high close (no pre-breakout speculation)'
+          : 'New 20-day high or coiling within 1.5% of resistance',
         value: breakout20.isBullishBreakout ? 'New High' : `-${distFrom20dHigh.toFixed(1)}%`,
         metric: breakout20.isBullishBreakout ? 'Breakout High!' : `${distFrom20dHigh.toFixed(1)}% to High`,
         passed: Boolean(passBreakout)
@@ -1580,7 +1696,9 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
         id: 'clv',
         name: 'CLV Pressure',
         shortName: 'CLV',
-        criteria: 'Close Location Value >= 68% (upper candle range)',
+        criteria: isConservative
+          ? 'Close Location Value >= 68% (upper third of daily range)'
+          : 'Close Location Value >= 64% (upper candle range)',
         value: `${(clv * 100).toFixed(0)}%`,
         metric: `${(clv * 100).toFixed(0)}% Range`,
         passed: Boolean(passCLV)
@@ -1840,6 +1958,8 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
   return {
     date: targetDate,
     marketRegime: marketRegime.regime,
+    strategyApproach: isConservative ? 'conservative' : 'aggressive',
+    strategyTitle: isConservative ? 'Conservative (Institutional ~40-41 Trades/Yr)' : 'Aggressive (Broad Momentum ~172 Trades/Yr)',
     totalScanned: scoredStocks.length,
     top25: allRanked.slice(0, 25),
     rankings: allRanked

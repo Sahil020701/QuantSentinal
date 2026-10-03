@@ -83,7 +83,7 @@ GTT Setup: Place OCO GTT on Zerodha/Groww before 09:15 AM IST`;
     );
   }
 
-  const { date, marketRegime, totalScanned = 0, top25 = [], rankings } = data;
+  const { date, marketRegime, strategyApproach, strategyTitle, totalScanned = 0, top25 = [], rankings } = data;
   const allCandidates = (rankings && rankings.length > 0) ? rankings : top25;
 
   // Generate dynamic step-up options: 25, 50, 75, ... up to total available assets, then 'ALL'
@@ -228,6 +228,19 @@ GTT Setup: Place OCO GTT on Zerodha/Groww before 09:15 AM IST`;
               }}>
                 MARKET REGIME: {marketRegime}
               </span>
+              {strategyApproach && (
+                <span style={{
+                  fontSize: '0.75rem',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: '6px',
+                  background: strategyApproach === 'conservative' ? 'rgba(59, 130, 246, 0.12)' : 'var(--accent-glow)',
+                  color: strategyApproach === 'conservative' ? 'var(--blue, #3b82f6)' : 'var(--accent)',
+                  border: `1px solid ${strategyApproach === 'conservative' ? 'rgba(59, 130, 246, 0.3)' : 'var(--accent-border)'}`,
+                  fontWeight: '700'
+                }}>
+                  STRATEGY: {strategyApproach === 'conservative' ? 'CONSERVATIVE (~40 TRADES/YR)' : 'AGGRESSIVE (~172 TRADES/YR)'}
+                </span>
+              )}
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 Evaluated for: <strong>{date}</strong> • {totalScanned} Assets Scanned
               </span>

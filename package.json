@@ -6,7 +6,8 @@
     "install-all": "npm install && npm install --prefix backend && (python3 -m pip install -r backend/requirements.txt --break-system-packages || pip3 install -r backend/requirements.txt --break-system-packages || pip install -r backend/requirements.txt) && npm install --prefix frontend",
     "backend": "npm start --prefix backend",
     "frontend": "npm run dev --prefix frontend",
-    "dev": "npx concurrently \"npm run backend\" \"npm run frontend\""
+    "dev": "npx concurrently \"npm run backend\" \"npm run frontend\"",
+    "backtest": "node scripts/backtest.js"
   },
   "dependencies": {
     "concurrently": "^8.2.2"

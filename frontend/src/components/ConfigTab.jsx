@@ -46,12 +46,17 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     return `${d.getFullYear()}-01-01`;
   };
 
+  const minHistoryDate = '2019-01-01';
   const default1YDate = getPastDateStr(365);
   const [selectedStartDate, setSelectedStartDate] = useState(default1YDate);
   const [autoReplay, setAutoReplay] = useState(true);
 
   const datePresets = [
-    { label: '1Y Ago', value: getPastDateStr(365) },
+    { label: 'From 2019', value: '2019-01-01' },
+    { label: '5Y Backtest', value: getPastDateStr(1826) },
+    { label: '3Y Backtest', value: getPastDateStr(1095) },
+    { label: '2Y Backtest', value: getPastDateStr(730) },
+    { label: '1Y Backtest', value: getPastDateStr(365) },
     { label: 'YTD', value: getYTDStr() },
     { label: '6M Ago', value: getPastDateStr(180) },
     { label: '3M Ago', value: getPastDateStr(90) },
@@ -153,7 +158,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       onReset(data.state);
       setMessage(
         isToday
-          ? `Simulation successfully reset to Today (${todayStr}) with clean ₹50,000 slate.`
+          ? `Simulation successfully reset to Today (${todayStr}) with clean ₹1,00,000 slate.`
           : `Simulation successfully reset to ${targetDate}${replay ? ' and backtest replayed to today.' : '.'}`
       );
     } catch (err) {
@@ -192,18 +197,161 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
           </div>
           <form onSubmit={handleSaveConfig} className="config-group">
             <div className="config-item">
-              <label>Aggressiveness Mode</label>
-              <select
-                className="config-select"
-                value={aggressiveness}
-                onChange={(e) => setAggressiveness(e.target.value)}
-              >
-                <option value="conservative">Conservative (Aim: 8-12% annual, tight risk)</option>
-                <option value="moderate">Moderate (Aim: 12-15% annual, balanced risk)</option>
-                <option value="aggressive">Aggressive (Aim: 15-20% annual, active swings)</option>
-                <option value="hyper">Hyper-Aggressive (Aim: 25%+ annual, maximum momentum)</option>
-              </select>
-              <div className="config-desc">Defines position allocation weights and trade filtering strictness.</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                <label style={{ margin: 0 }}>Strategy Approach</label>
+                <span style={{
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '5px',
+                  background: aggressiveness === 'conservative' ? 'rgba(59, 130, 246, 0.15)' : 'var(--accent-glow)',
+                  color: aggressiveness === 'conservative' ? 'var(--blue, #3b82f6)' : 'var(--accent)',
+                  border: `1px solid ${aggressiveness === 'conservative' ? 'rgba(59, 130, 246, 0.3)' : 'var(--accent-border)'}`,
+                  letterSpacing: '0.4px'
+                }}>
+                  {aggressiveness === 'conservative' ? 'CONSERVATIVE SELECTED' : 'AGGRESSIVE SELECTED'}
+                </span>
+              </div>
+
+              {/* Strategy Toggle Cards */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                gap: '0.75rem',
+                marginTop: '0.35rem'
+              }}>
+                {/* Aggressive Card */}
+                <div
+                  onClick={() => setAggressiveness('aggressive')}
+                  style={{
+                    padding: '0.9rem',
+                    borderRadius: '8px',
+                    border: (aggressiveness === 'aggressive' || aggressiveness === 'hyper')
+                      ? '2px solid var(--accent)'
+                      : '1px solid var(--border-color)',
+                    background: (aggressiveness === 'aggressive' || aggressiveness === 'hyper')
+                      ? 'var(--accent-glow)'
+                      : 'var(--bg-card)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.45rem',
+                    position: 'relative'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: '700', fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                      Aggressive Approach
+                    </span>
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: '700',
+                      padding: '0.15rem 0.45rem',
+                      borderRadius: '4px',
+                      background: (aggressiveness === 'aggressive' || aggressiveness === 'hyper') ? 'var(--accent)' : 'var(--border-color)',
+                      color: '#ffffff'
+                    }}>
+                      {(aggressiveness === 'aggressive' || aggressiveness === 'hyper') ? 'ACTIVE' : 'SELECT'}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    fontSize: '0.78rem',
+                    fontWeight: '700',
+                    color: 'var(--accent)',
+                    display: 'flex',
+                    gap: '0.4rem',
+                    alignItems: 'center'
+                  }}>
+                    <span>~172 Trades/Yr</span>
+                    <span>•</span>
+                    <span>+44% to +48% Return</span>
+                  </div>
+
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                    Broad momentum entries including pre-breakout coils within 1.5% of 20d high. Fast capital turnover with unbottlenecked entries up to 10 concurrent holdings.
+                  </div>
+
+                  <div style={{
+                    fontSize: '0.7rem',
+                    color: 'var(--text-muted)',
+                    borderTop: '1px solid var(--border-color)',
+                    paddingTop: '0.35rem',
+                    fontWeight: '500'
+                  }}>
+                    Triggers: 1.75x RVOL | 3.0% Alpha | 1.4% Move | 64% CLV
+                  </div>
+                </div>
+
+                {/* Conservative Card */}
+                <div
+                  onClick={() => setAggressiveness('conservative')}
+                  style={{
+                    padding: '0.9rem',
+                    borderRadius: '8px',
+                    border: aggressiveness === 'conservative'
+                      ? '2px solid var(--accent)'
+                      : '1px solid var(--border-color)',
+                    background: aggressiveness === 'conservative'
+                      ? 'var(--accent-glow)'
+                      : 'var(--bg-card)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.45rem',
+                    position: 'relative'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: '700', fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                      Conservative Approach
+                    </span>
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: '700',
+                      padding: '0.15rem 0.45rem',
+                      borderRadius: '4px',
+                      background: aggressiveness === 'conservative' ? 'var(--accent)' : 'var(--border-color)',
+                      color: '#ffffff'
+                    }}>
+                      {aggressiveness === 'conservative' ? 'ACTIVE' : 'SELECT'}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    fontSize: '0.78rem',
+                    fontWeight: '700',
+                    color: 'var(--blue, #3b82f6)',
+                    display: 'flex',
+                    gap: '0.4rem',
+                    alignItems: 'center'
+                  }}>
+                    <span>~40-41 Trades/Yr</span>
+                    <span>•</span>
+                    <span>+21% to +22% Return</span>
+                  </div>
+
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                    Institutional breakout strategy with confirmed 20-day high close only. Disciplined pacing (max 2 buys/day) and 100% Risk-Off cash preservation freeze.
+                  </div>
+
+                  <div style={{
+                    fontSize: '0.7rem',
+                    color: 'var(--text-muted)',
+                    borderTop: '1px solid var(--border-color)',
+                    paddingTop: '0.35rem',
+                    fontWeight: '500'
+                  }}>
+                    Triggers: 1.90x RVOL | 4.0% Alpha | 1.8% Move | 68% CLV
+                  </div>
+                </div>
+              </div>
+
+              <div className="config-desc" style={{ marginTop: '0.35rem' }}>
+                Toggle strategy profile to switch between institutional capital preservation (~40-41 trades/yr) and broad high-frequency momentum (~172 trades/yr). Click "Save Strategy Settings" to persist.
+              </div>
             </div>
 
             <div className="config-item">
@@ -335,7 +483,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                     <input
                       type="date"
                       value={selectedStartDate}
-                      min={default1YDate}
+                      min={minHistoryDate}
                       max={todayStr}
                       onChange={(e) => setSelectedStartDate(e.target.value)}
                       className="config-input"
@@ -394,7 +542,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                     {resetting
                       ? "Resetting & Replaying Simulation..."
                       : selectedStartDate === todayStr
-                        ? "Reset to Today (Clean Slate ₹50k)"
+                        ? "Reset to Today (Clean Slate ₹100k)"
                         : autoReplay
                           ? `Reset & Run Backtest from ${selectedStartDate}`
                           : `Reset Baseline to ${selectedStartDate}`
@@ -402,7 +550,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
                   </button>
 
                   <div className="config-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Wipes all trade history, active holdings, and logs. Reinitializes cash balance to ₹50,000 starting on {selectedStartDate}.
+                    Wipes all trade history, active holdings, and logs. Reinitializes cash balance to ₹1,00,000 starting on {selectedStartDate}.
                   </div>
                 </div>
               </div>
