@@ -1047,15 +1047,11 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       const availableSlots = Math.max(1, state.config.maxPositions - state.holdings.length);
 
       // Pillar 2: Asymmetric Conviction Sizing:
-      // Grade A+ Institutional Breakouts (Score >= 93) get 14%-15% capital allocation cap to supercharge compounding.
-      // Standard setups (Score < 93) get 10% allocation cap to control baseline portfolio risk.
+      // Grade A+ Institutional Breakouts (Score >= 93) get 15.0% capital allocation to supercharge compounding.
+      // Standard setups (Score < 93) get 12.5% allocation to balance portfolio diversification.
       const isHighConviction = (targetStock.score || 0) >= 93;
-      const maxSinglePositionCap = totalPortfolioValue * (isHighConviction ? 0.15 : 0.10);
-      const slotBudget = (state.cash - minCashReserve) / availableSlots;
-      const targetPositionSize = Math.max(
-        5000,
-        Math.min(maxSinglePositionCap, isHighConviction ? slotBudget * 1.35 : slotBudget)
-      );
+      const allocPct = isHighConviction ? 0.15 : 0.125;
+      const targetPositionSize = totalPortfolioValue * allocPct;
       const minAllocationFloor = Math.min(4000, totalPortfolioValue * 0.04);
       if (state.cash < minAllocationFloor + minCashReserve) return false;
 
@@ -2038,7 +2034,9 @@ async function deployIdleCash(simDate) {
     }
 
     // --- NEW POSITION BRANCH ---
-    const targetPositionSize = Math.max(5000, Math.min(totalPortfolioValue * 0.125, (state.cash - minCashReserve) / availableSlots));
+    const isHighConviction = (targetStock.score || 0) >= 93;
+    const allocPct = isHighConviction ? 0.15 : 0.125;
+    const targetPositionSize = totalPortfolioValue * allocPct;
     const capitalAllocation = Math.min(targetPositionSize, state.cash - minCashReserve);
     let qty = Math.floor(capitalAllocation / targetStock.price);
 
