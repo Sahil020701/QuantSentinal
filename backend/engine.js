@@ -205,7 +205,22 @@ function hasBarsForRange(dataObj, minStartDate, targetEndDate) {
   return false;
 }
 
+// Return the latest completed trading session date in market data <= candidateDate
+function getLatestCompletedMarketDate(candidateDate) {
+  const data = inMemoryMarketData?.data;
+  if (!data) return candidateDate;
+  const bench = data['^NSEI'] || data['NIFTYBEES.NS'] || data['RELIANCE.NS'];
+  if (!bench || bench.length === 0) return candidateDate;
+  if (!candidateDate) return bench[bench.length - 1].date;
+  const filtered = bench.filter(b => b.date <= candidateDate);
+  if (filtered.length > 0) {
+    return filtered[filtered.length - 1].date;
+  }
+  return candidateDate;
+}
+
 // Fetch and Store Yahoo Finance Data via Python yfinance helper script into in-memory runtime cache
+
 async function updateCache(endDateStr, forceRefresh = false, minStartDateStr = null) {
   const todayStr = formatUTCDate(new Date());
 
@@ -1411,10 +1426,24 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
   }
 
   const cachedData = await updateCache(targetDate, forceRefresh);
+  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+
+  // Auto-fallback: If targetDate has no session bar in benchmark data (e.g. exchange holiday or weekend),
+  // automatically step back to the true latest completed market session bar.
+  if (benchmarkData && benchmarkData.length > 0) {
+    const hasTargetBar = benchmarkData.some(row => row.date === targetDate);
+    if (!hasTargetBar) {
+      const priorBars = benchmarkData.filter(row => row.date <= targetDate);
+      if (priorBars.length > 0) {
+        const fallbackSession = priorBars[priorBars.length - 1].date;
+        console.log(`[getTop25AlgoRankings] Target date ${targetDate} has no benchmark session bar (exchange holiday/weekend). Auto-resolving to latest completed session: ${fallbackSession}`);
+        targetDate = fallbackSession;
+      }
+    }
+  }
+
   const marketRegime = evaluateMarketRegime(targetDate, cachedData);
 
-  // Benchmark return over last 20 sessions (Nifty 50 or fallback)
-  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
   let benchmarkReturn20d = 0;
   if (benchmarkData && benchmarkData.length > 0) {
     const bIdx = benchmarkData.findIndex(row => row.date === targetDate);
@@ -1751,6 +1780,15 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
       executionStatus = { status: 'WATCHLIST_PENDING', label: 'Watchlist Setup', reason: '' };
     }
 
+    const stopLossPercent = state.config?.stopLossPercent || 0.048;
+    const targetProfitPercent = state.config?.targetProfitPercent || 0.25;
+    const isHighConviction = algoScore >= 93;
+    const suggestedAllocPct = isHighConviction ? 15.0 : 12.5;
+    const stopLossPrice = Number((currentClose * (1 - stopLossPercent)).toFixed(2));
+    const targetPrice = Number((currentClose * (1 + targetProfitPercent)).toFixed(2));
+    const riskAmount = Number((currentClose - stopLossPrice).toFixed(2));
+    const rewardAmount = Number((targetPrice - currentClose).toFixed(2));
+
     scoredStocks.push({
       symbol: stock.symbol,
       name: stock.name,
@@ -1765,7 +1803,25 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
       passedCount,
       totalIndicators: indicators.length,
       indicators,
-      history: history.slice(Math.max(0, dayIdx - 20), dayIdx + 1)
+      history: history.slice(Math.max(0, dayIdx - 20), dayIdx + 1),
+      orderTicket: {
+        action: 'BUY',
+        orderType: 'LIMIT',
+        productType: 'CNC / DELIVERY',
+        limitPrice: Number(currentClose.toFixed(2)),
+        limitPriceBuffered: Number((currentClose * 1.002).toFixed(2)),
+        stopLoss: stopLossPrice,
+        stopLossPercent: Number((stopLossPercent * 100).toFixed(1)),
+        stopLossAmount: riskAmount,
+        targetPrice: targetPrice,
+        targetProfitPercent: Number((targetProfitPercent * 100).toFixed(1)),
+        targetProfitAmount: rewardAmount,
+        riskRewardRatio: '1 : 5.2',
+        suggestedAllocPct: suggestedAllocPct,
+        convictionGrade: isHighConviction ? 'Grade A+ (High Conviction)' : algoScore >= 80 ? 'Grade A (Standard)' : 'Grade B (Watchlist)',
+        isQualified: executionStatus?.status === 'QUALIFIED_BUY',
+        sessionDate: targetDate
+      }
     });
   }
 
@@ -2106,5 +2162,6 @@ module.exports = {
   evaluateMarketRegime,
   scanMarketCandidates,
   getTop25AlgoRankings,
+  getLatestCompletedMarketDate,
   updateCache
 };

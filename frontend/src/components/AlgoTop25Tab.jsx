@@ -14,6 +14,32 @@ export default function AlgoTop25Tab() {
   const [displayLimit, setDisplayLimit] = useState(25);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
   const [inspectStock, setInspectStock] = useState(null);
+  const [simulateStock, setSimulateStock] = useState(null);
+  const [userCapital, setUserCapital] = useState(100000);
+  const [copiedOrderId, setCopiedOrderId] = useState(false);
+  const [onlyReadyToBuy, setOnlyReadyToBuy] = useState(false);
+
+  const copyOrderParameters = (stock, qty, requiredCap, sl, tp, riskRs, gainRs, allocPct, grade) => {
+    const sym = stock.symbol.replace('.NS', '');
+    const text = `QUANTSENTINEL NEXT-DAY ORDER TICKET
+Asset: ${sym} (${stock.name})
+Sector: ${stock.sector} | Cap: ${stock.cap || 'Equity'}
+Action: BUY (CNC / Delivery)
+Order Type: LIMIT ORDER
+Limit Entry Price: ₹${stock.price.toFixed(2)}
+Stop Loss: ₹${sl.toFixed(2)} (-4.8%)
+Take-Profit Target: ₹${tp.toFixed(2)} (+25.0%)
+Recommended Sizing: ${qty} shares (₹${requiredCap.toLocaleString('en-IN')})
+Account Allocation: ${allocPct}% (${grade})
+Risk / Reward: 1 : 5.2 (Downside Risk: ₹${riskRs.toLocaleString('en-IN')} | Upside Target: ₹${gainRs.toLocaleString('en-IN')})
+GTT Setup: Place OCO GTT on Zerodha/Groww before 09:15 AM IST`;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+      setCopiedOrderId(true);
+      setTimeout(() => setCopiedOrderId(false), 2500);
+    }
+  };
 
   useEffect(() => {
     fetchTop25();
@@ -76,6 +102,9 @@ export default function AlgoTop25Tab() {
   const sectors = ['ALL', ...new Set(allCandidates.map(s => s.sector).filter(Boolean))];
   const caps = ['ALL', 'Large Cap', 'Mid Cap', 'Small Cap'];
 
+  // Count qualified buys ready for next-day execution
+  const qualifiedBuysCount = allCandidates.filter(s => s.executionStatus?.status === 'QUALIFIED_BUY').length;
+
   // Filtering
   const filteredStocks = displayedPool.filter(stock => {
     const matchesSearch =
@@ -88,7 +117,8 @@ export default function AlgoTop25Tab() {
       (minPassed === '8' && stock.passedCount === 8) ||
       (minPassed === '7+' && stock.passedCount >= 7) ||
       (minPassed === '6+' && stock.passedCount >= 6);
-    return matchesSearch && matchesSector && matchesCap && matchesPassed;
+    const matchesQualified = !onlyReadyToBuy || stock.executionStatus?.status === 'QUALIFIED_BUY';
+    return matchesSearch && matchesSector && matchesCap && matchesPassed && matchesQualified;
   });
 
   const getRankClass = (rank) => {
@@ -232,6 +262,38 @@ export default function AlgoTop25Tab() {
           <span title="<= 8.0% above 20 EMA to avoid extended trap"><strong>Safety:</strong> &lt;= 8.0% from 20 EMA</span>
         </div>
 
+        {/* Next-Day Actionable Setups Banner */}
+        {qualifiedBuysCount > 0 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.75rem 1rem',
+            borderRadius: '10px',
+            background: 'var(--green-glow)',
+            border: '1px solid var(--green-border)',
+            marginTop: '0.75rem',
+            flexWrap: 'wrap',
+            gap: '0.6rem'
+          }}>
+            <div>
+              <span style={{ fontSize: '0.88rem', fontWeight: '800', color: 'var(--green)' }}>
+                {qualifiedBuysCount} Next-Day Trade Setup{qualifiedBuysCount > 1 ? 's' : ''} Ready for Market Open!
+              </span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginLeft: '0.5rem' }}>
+                QuantSentinel algorithm passed all institutional criteria. Click Order Ticket to copy Limit &amp; Stop Loss prices.
+              </span>
+            </div>
+            <button
+              onClick={() => setOnlyReadyToBuy(!onlyReadyToBuy)}
+              className={`btn ${onlyReadyToBuy ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem', fontWeight: '700' }}
+            >
+              {onlyReadyToBuy ? 'Show All Ranked Assets' : `View Only Next-Day Buys (${qualifiedBuysCount})`}
+            </button>
+          </div>
+        )}
+
         {/* Filter and View Controls Toolbar */}
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
           {/* Search box */}
@@ -364,7 +426,7 @@ export default function AlgoTop25Tab() {
                   <th style={{ textAlign: 'center' }}>CLV</th>
                   <th style={{ textAlign: 'center' }}>ADX</th>
                   <th style={{ textAlign: 'center' }}>Safety</th>
-                  <th style={{ textAlign: 'center' }}>Action</th>
+                  <th style={{ textAlign: 'center', minWidth: '180px' }}>Simulate &amp; Inspect</th>
                 </tr>
               </thead>
               <tbody>
@@ -586,11 +648,25 @@ export default function AlgoTop25Tab() {
                         )}
                       </td>
 
-                      {/* Action */}
-                      <td style={{ textAlign: 'center' }} onClick={(e) => { e.stopPropagation(); setInspectStock(stock); }}>
-                        <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem' }}>
-                          Inspect
-                        </button>
+                      {/* Action: Simulate & Inspect */}
+                      <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'center' }}>
+                          <button
+                            className={`btn-ticket ${stock.executionStatus?.status === 'QUALIFIED_BUY' ? 'btn-ticket-glow' : ''}`}
+                            onClick={() => setSimulateStock(stock)}
+                            title="Simulate Next-Day Order (Limit Price, Stop Loss, Quantity)"
+                          >
+                            Order Ticket
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem' }}
+                            onClick={() => setInspectStock(stock)}
+                            title="Inspect indicator checklist and historical chart"
+                          >
+                            Inspect
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -697,13 +773,20 @@ export default function AlgoTop25Tab() {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.35rem' }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  className={`btn-ticket ${stock.executionStatus?.status === 'QUALIFIED_BUY' ? 'btn-ticket-glow' : 'btn-ticket-primary'}`}
+                  style={{ flex: '1.2', fontSize: '0.8rem', padding: '0.45rem', justifyContent: 'center' }}
+                  onClick={() => setSimulateStock(stock)}
+                >
+                  Simulate Trade &amp; SL
+                </button>
                 <button
                   className="btn btn-secondary"
-                  style={{ width: '100%', fontSize: '0.8rem', padding: '0.4rem' }}
-                  onClick={(e) => { e.stopPropagation(); setInspectStock(stock); }}
+                  style={{ flex: '0.8', fontSize: '0.8rem', padding: '0.45rem', justifyContent: 'center' }}
+                  onClick={() => setInspectStock(stock)}
                 >
-                  Inspect Full Setup & Chart →
+                  Inspect Setup →
                 </button>
               </div>
             </div>
@@ -879,11 +962,24 @@ export default function AlgoTop25Tab() {
               </div>
             </div>
 
+            {/* Button to Switch to Order Ticket */}
+            <button
+              onClick={() => {
+                const stock = inspectStock;
+                setInspectStock(null);
+                setSimulateStock(stock);
+              }}
+              className="btn btn-ticket-primary"
+              style={{ width: '100%', marginTop: '0.75rem', padding: '0.65rem', fontSize: '0.88rem' }}
+            >
+              Open Next-Day Order Ticket &amp; Broker Simulator &rarr;
+            </button>
+
             {/* Close Button */}
             <button
               onClick={() => setInspectStock(null)}
               className="btn btn-secondary"
-              style={{ width: '100%', marginTop: '0.5rem' }}
+              style={{ width: '100%', marginTop: '0.4rem' }}
             >
               Close Inspection
             </button>
@@ -891,6 +987,326 @@ export default function AlgoTop25Tab() {
           </div>
         </div>
       )}
+
+      {/* ================= Next-Day Order Ticket & Trade Simulation Modal ================= */}
+      {simulateStock && (() => {
+        const price = simulateStock.price || 0;
+        const isGradeAPlus = (simulateStock.algoScore || 0) >= 93;
+        const allocPct = isGradeAPlus ? 15.0 : 12.5;
+        const convictionGrade = isGradeAPlus ? 'Grade A+ (High Conviction)' : (simulateStock.algoScore >= 80 ? 'Grade A (Standard)' : 'Grade B (Watchlist)');
+        
+        const stopLossPrice = Number((price * 0.952).toFixed(2));
+        const targetPrice = Number((price * 1.25).toFixed(2));
+        const limitPriceBuffered = Number((price * 1.002).toFixed(2));
+
+        const targetAllocRupees = userCapital * (allocPct / 100);
+        let suggestedQty = price > 0 ? Math.floor(targetAllocRupees / price) : 0;
+        if (suggestedQty <= 0 && userCapital >= price) suggestedQty = 1;
+
+        const totalInvestment = suggestedQty * price;
+        const maxDownsideRisk = Number((suggestedQty * (price - stopLossPrice)).toFixed(2));
+        const maxUpsideGain = Number((suggestedQty * (targetPrice - price)).toFixed(2));
+        const riskPctOfAccount = userCapital > 0 ? ((maxDownsideRisk / userCapital) * 100).toFixed(2) : '0.00';
+        const gainPctOfAccount = userCapital > 0 ? ((maxUpsideGain / userCapital) * 100).toFixed(2) : '0.00';
+
+        const isQualified = simulateStock.executionStatus?.status === 'QUALIFIED_BUY';
+
+        return (
+          <div className="modal-overlay" onClick={() => setSimulateStock(null)}>
+            <div
+              className="modal-content"
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: '720px', maxHeight: '92vh', overflowY: 'auto' }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span className={`rank-badge ${getRankClass(simulateStock.rank)}`} style={{ width: '38px', height: '38px', fontSize: '1.05rem' }}>
+                    #{simulateStock.rank}
+                  </span>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <h2 style={{ margin: '0', fontSize: '1.35rem' }}>{simulateStock.symbol.replace('.NS', '')}</h2>
+                      <span className={`score-chip ${getScoreChipClass(simulateStock.algoScore)}`}>
+                        {simulateStock.algoScore}/100 Algo Score
+                      </span>
+                      <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--accent)', fontWeight: '700' }}>
+                        {convictionGrade}
+                      </span>
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                      {simulateStock.name} • {simulateStock.sector}{simulateStock.cap ? ` • ${simulateStock.cap}` : ''}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setSimulateStock(null)}
+                  style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Execution Status Alert Banner */}
+              <div style={{
+                padding: '0.75rem 1rem',
+                borderRadius: '8px',
+                background: isQualified ? 'var(--green-glow)' : 'rgba(15, 23, 42, 0.03)',
+                border: `1px solid ${isQualified ? 'var(--green-border)' : 'var(--border-color)'}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.5rem'
+              }}>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '0.85rem', color: isQualified ? 'var(--green)' : 'var(--text-primary)' }}>
+                    {isQualified ? 'QUANT SENTINEL ACTIVE BUY SETUP (NEXT SESSION)' : `Setup Status: ${simulateStock.executionStatus?.label || 'Watchlist'}`}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {isQualified
+                      ? 'This stock meets all breakout momentum and institutional criteria. Engine plans to execute at market open.'
+                      : (simulateStock.executionStatus?.reason || 'Candidate is tracked on algorithm watchlist.')}
+                  </div>
+                </div>
+
+                <span style={{
+                  fontSize: '0.72rem',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: '5px',
+                  ...getExecutionBadgeStyle(simulateStock.executionStatus?.status)
+                }}>
+                  {simulateStock.executionStatus?.label}
+                </span>
+              </div>
+
+              {/* 4 Core Parameter Cards (Broker Execution Specs) */}
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Next-Day Order Execution Parameters
+                </div>
+                <div className="ticket-metric-grid">
+                  {/* Card 1: Limit Order Entry */}
+                  <div className="ticket-metric-card" style={{ borderLeft: '4px solid var(--accent)' }}>
+                    <span className="ticket-metric-label">1. Limit Order Price</span>
+                    <span className="ticket-metric-val" style={{ color: 'var(--accent)' }}>
+                      ₹{price.toFixed(2)}
+                    </span>
+                    <span className="ticket-metric-sub" style={{ color: 'var(--text-secondary)' }}>
+                      Trigger Buffer: ₹{limitPriceBuffered.toFixed(2)} (+0.2%)
+                    </span>
+                  </div>
+
+                  {/* Card 2: Stop-Loss (-4.8%) */}
+                  <div className="ticket-metric-card" style={{ borderLeft: '4px solid var(--red)' }}>
+                    <span className="ticket-metric-label">2. Stop-Loss (Hard Exit)</span>
+                    <span className="ticket-metric-val" style={{ color: 'var(--red)' }}>
+                      ₹{stopLossPrice.toFixed(2)}
+                    </span>
+                    <span className="ticket-metric-sub" style={{ color: 'var(--red)' }}>
+                      -4.8% (-₹{(price * 0.048).toFixed(2)}/sh)
+                    </span>
+                  </div>
+
+                  {/* Card 3: Target (+25.0%) */}
+                  <div className="ticket-metric-card" style={{ borderLeft: '4px solid var(--green)' }}>
+                    <span className="ticket-metric-label">3. Target Profit</span>
+                    <span className="ticket-metric-val" style={{ color: 'var(--green)' }}>
+                      ₹{targetPrice.toFixed(2)}
+                    </span>
+                    <span className="ticket-metric-sub" style={{ color: 'var(--green)' }}>
+                      +25.0% (+₹{(price * 0.25).toFixed(2)}/sh)
+                    </span>
+                  </div>
+
+                  {/* Card 4: Risk / Reward */}
+                  <div className="ticket-metric-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                    <span className="ticket-metric-label">4. Risk / Reward</span>
+                    <span className="ticket-metric-val" style={{ color: '#8b5cf6' }}>
+                      1 : 5.2
+                    </span>
+                    <span className="ticket-metric-sub" style={{ color: 'var(--text-secondary)' }}>
+                      Asymmetric Payoff Edge
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Capital Allocation & Position Sizing Calculator */}
+              <div style={{ background: 'rgba(15, 23, 42, 0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                      Interactive Position Sizing Calculator
+                    </span>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Calculates exact shares and rupee risk based on your trading account capital.
+                    </div>
+                  </div>
+
+                  {/* Capital Preset Pills */}
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    {[50000, 100000, 200000, 500000].map(amt => (
+                      <button
+                        key={amt}
+                        onClick={() => setUserCapital(amt)}
+                        className={`calc-preset-pill ${userCapital === amt ? 'active' : ''}`}
+                      >
+                        ₹{(amt / 1000).toFixed(0)}K
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Capital Input Field */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    My Account Capital:
+                  </span>
+                  <div style={{ position: 'relative', width: '180px' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontWeight: '700', color: 'var(--text-muted)' }}>
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      value={userCapital}
+                      onChange={(e) => setUserCapital(Math.max(1000, Number(e.target.value) || 0))}
+                      className="config-input"
+                      style={{ paddingLeft: '1.75rem', width: '100%', fontSize: '0.9rem', fontWeight: '700' }}
+                    />
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    (Suggested Size: <strong>{allocPct}%</strong> / ₹{targetAllocRupees.toLocaleString('en-IN')})
+                  </span>
+                </div>
+
+                {/* Real-Time Calculation Results Matrix */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                  gap: '0.65rem',
+                  padding: '0.85rem',
+                  background: 'var(--bg-card)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)'
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '600' }}>Recommended Qty</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--accent)' }}>
+                      {suggestedQty} <span style={{ fontSize: '0.75rem', fontWeight: '500' }}>shares</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '600' }}>Capital Deployed</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                      ₹{totalInvestment.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '600' }}>Max Loss at SL (-4.8%)</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--red)' }}>
+                      -₹{maxDownsideRisk.toLocaleString('en-IN')}
+                      <span style={{ fontSize: '0.68rem', fontWeight: '600', marginLeft: '0.25rem' }}>({riskPctOfAccount}%)</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: '600' }}>Target Profit (+25%)</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--green)' }}>
+                      +₹{maxUpsideGain.toLocaleString('en-IN')}
+                      <span style={{ fontSize: '0.68rem', fontWeight: '600', marginLeft: '0.25rem' }}>({gainPctOfAccount}%)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Formatted Order Code Block & One-Click Copy */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    Broker Order Ticket Summary
+                  </span>
+                  <button
+                    onClick={() => copyOrderParameters(
+                      simulateStock,
+                      suggestedQty,
+                      totalInvestment,
+                      stopLossPrice,
+                      targetPrice,
+                      maxDownsideRisk,
+                      maxUpsideGain,
+                      allocPct,
+                      convictionGrade
+                    )}
+                    className="btn btn-ticket-primary"
+                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+                  >
+                    {copiedOrderId ? 'Copied to Clipboard!' : 'Copy Order Details'}
+                  </button>
+                </div>
+
+                <div className="ticket-copy-box">
+{`Asset: ${simulateStock.symbol.replace('.NS', '')} (${simulateStock.name})
+Action: BUY (CNC / Delivery)  |  Order Type: LIMIT
+Limit Price: ₹${price.toFixed(2)}  (Trigger Buffer: ₹${limitPriceBuffered.toFixed(2)})
+Stop Loss: ₹${stopLossPrice.toFixed(2)} (-4.8%)
+Take-Profit: ₹${targetPrice.toFixed(2)} (+25.0%)
+Qty: ${suggestedQty} shares  (Value: ₹${totalInvestment.toLocaleString('en-IN')})
+Risk / Reward: 1 : 5.2 (Risk ₹${maxDownsideRisk.toLocaleString('en-IN')} to gain ₹${maxUpsideGain.toLocaleString('en-IN')})`}
+                </div>
+              </div>
+
+              {/* Broker Execution Guide (Zerodha / Groww / AngelOne) */}
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', background: 'rgba(37, 99, 235, 0.03)', border: '1px solid var(--accent-border)', borderRadius: '8px', padding: '0.75rem 1rem' }}>
+                <div style={{ fontWeight: '700', color: 'var(--accent)', marginBottom: '0.3rem' }}>
+                  How to Simulate / Place this on your Broker (Zerodha Kite, Groww, AngelOne):
+                </div>
+                <ol style={{ paddingLeft: '1.2rem', margin: '0', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                  <li>Open your Broker App in the evening &rarr; Search <strong>{simulateStock.symbol.replace('.NS', '')}</strong>.</li>
+                  <li>Click <strong>Create GTT</strong> (or place an <strong>After Market Limit Order / AMO</strong>).</li>
+                  <li>Set <strong>Trigger Price</strong> at <strong>₹{price.toFixed(2)}</strong> and <strong>Limit Price</strong> at <strong>₹{limitPriceBuffered.toFixed(2)}</strong>.</li>
+                  <li>Set Stop-Loss trigger at <strong>₹{stopLossPrice.toFixed(2)}</strong> (-4.8%) and Target at <strong>₹{targetPrice.toFixed(2)}</strong> (+25%).</li>
+                  <li>Enter Quantity: <strong>{suggestedQty} shares</strong> and click <strong>Place GTT</strong>.</li>
+                </ol>
+              </div>
+
+              {/* Algorithmic Trailing Rules */}
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
+                <strong>QuantSentinel Trade Management Plan:</strong>
+                <span style={{ marginLeft: '0.35rem' }}>
+                  1. Exit immediately if price hits ₹{stopLossPrice.toFixed(2)} (-4.8%). &bull; 
+                  2. At +10% gain (₹{(price * 1.10).toFixed(2)}), trail Stop Loss to Breakeven (₹{price.toFixed(2)}). &bull; 
+                  3. At +15% gain (₹{(price * 1.15).toFixed(2)}), lock in +8% minimum profit (₹{(price * 1.08).toFixed(2)}). &bull; 
+                  4. Book 100% profit at +25% (₹{targetPrice.toFixed(2)}).
+                </span>
+              </div>
+
+              {/* Bottom Buttons */}
+              <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.25rem' }}>
+                <button
+                  onClick={() => {
+                    const stock = simulateStock;
+                    setSimulateStock(null);
+                    setInspectStock(stock);
+                  }}
+                  className="btn btn-secondary"
+                  style={{ flex: '1', fontSize: '0.85rem' }}
+                >
+                  View Full Indicators &amp; Chart &rarr;
+                </button>
+                <button
+                  onClick={() => setSimulateStock(null)}
+                  className="btn btn-primary"
+                  style={{ flex: '1', fontSize: '0.85rem' }}
+                >
+                  Done
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

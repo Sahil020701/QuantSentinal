@@ -14,7 +14,8 @@ const {
   reEvaluateHoldings,
   deployIdleCash,
   getWatchlistQuotes,
-  getTop25AlgoRankings
+  getTop25AlgoRankings,
+  getLatestCompletedMarketDate
 } = require('./engine');
 
 const app = express();
@@ -24,13 +25,43 @@ const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/quant_se
 app.use(cors());
 app.use(express.json());
 
+// Official NSE trading holidays (YYYY-MM-DD) for 2024, 2025, 2026
+const NSE_HOLIDAYS = new Set([
+  // 2026 NSE Holidays
+  '2026-01-26', // Republic Day
+  '2026-02-17', // Mahashivratri
+  '2026-03-04', // Holi
+  '2026-03-20', // Id-Ul-Fitr (Ramzan Id)
+  '2026-03-27', // Shri Ram Navami
+  '2026-03-31', // Mahavir Jayanti
+  '2026-04-03', // Good Friday
+  '2026-04-14', // Dr. Baba Saheb Ambedkar Jayanti
+  '2026-05-01', // Maharashtra Day
+  '2026-05-27', // Bakri Id / Eid-ul-Adha
+  '2026-06-26', // Muharram
+  '2026-08-15', // Independence Day
+  '2026-08-26', // Milad-un-Nabi
+  '2026-10-02', // Mahatma Gandhi Jayanti
+  '2026-10-20', // Dussehra
+  '2026-11-08', // Diwali Laxmi Pujan
+  '2026-11-10', // Diwali Balipratipada
+  '2026-11-24', // Gurunanak Jayanti
+  '2026-12-25', // Christmas
+  // 2025 NSE Holidays
+  '2025-01-26', '2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14',
+  '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21',
+  '2025-11-01', '2025-11-05', '2025-12-25',
+  // 2024 NSE Holidays
+  '2024-01-22', '2024-01-26', '2024-03-08', '2024-03-25', '2024-03-29', '2024-04-11',
+  '2024-04-17', '2024-05-01', '2024-05-20', '2024-06-17', '2024-07-17', '2024-08-15',
+  '2024-10-02', '2024-11-01', '2024-11-15', '2024-12-25'
+]);
+
 // Helper to get the latest *completed* trading session date in IST.
 // NSE market hours: 09:15–15:30 IST (UTC+5:30).
-// - If it's a weekday AND past 15:30 IST  → use today's IST date (session is closed).
-// - Otherwise (pre-market, weekend, holiday) → step back to the previous calendar day
-//   so that yfinance always finds a fully closed bar and the simulation can run.
+// - If it's a weekday AND past 15:30 IST AND not an exchange holiday → use today's IST date (session is closed).
+// - Otherwise (pre-market, weekend, exchange holiday) → automatically step back to the true latest completed market session.
 function getLatestTradingDateIST() {
-  // Current time in IST
   const now = new Date();
   const istOffset = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
   const istNow = new Date(now.getTime() + istOffset);
@@ -42,19 +73,31 @@ function getLatestTradingDateIST() {
   const toDateStr = (d) =>
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 
-  // Market is "done for today" only on Mon-Fri after 15:30 IST
-  if (dayOfWeek >= 1 && dayOfWeek <= 5 && istHHMM >= 1530) {
-    return toDateStr(istNow); // today's IST date — session has closed
+  // If today is a weekday, market has closed (after 15:30 IST), and today is not a holiday, candidate is today
+  // Otherwise, start from yesterday
+  let d;
+  if (dayOfWeek >= 1 && dayOfWeek <= 5 && istHHMM >= 1530 && !NSE_HOLIDAYS.has(toDateStr(istNow))) {
+    d = new Date(istNow.getTime());
+  } else {
+    d = new Date(istNow.getTime() - 24 * 60 * 60 * 1000);
   }
 
-  // Step back to the most recent completed weekday:
-  let daysBack = 1;
-  if (dayOfWeek === 6) daysBack = 1; // Sat -> Fri
-  else if (dayOfWeek === 0) daysBack = 2; // Sun -> Fri
-  else if (dayOfWeek === 1 && istHHMM < 1530) daysBack = 3; // Mon morning -> Fri
+  // Step backwards past weekends (Saturday=6, Sunday=0) and known NSE exchange holidays
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6 || NSE_HOLIDAYS.has(toDateStr(d))) {
+    d = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+  }
 
-  const lastCompleted = new Date(istNow.getTime() - daysBack * 24 * 60 * 60 * 1000);
-  return toDateStr(lastCompleted);
+  let computedDate = toDateStr(d);
+
+  // Cross-verify with engine benchmark calendar if live cache is loaded
+  if (typeof getLatestCompletedMarketDate === 'function') {
+    const verifiedDate = getLatestCompletedMarketDate(computedDate);
+    if (verifiedDate && verifiedDate <= computedDate) {
+      computedDate = verifiedDate;
+    }
+  }
+
+  return computedDate;
 }
 
 // Backwards-compatible alias used throughout server routes
