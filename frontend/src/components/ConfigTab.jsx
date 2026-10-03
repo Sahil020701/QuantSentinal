@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposit, onTriggerRun }) {
+export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigUpdate, onReset, onDeposit, onTriggerRun }) {
   const { config } = portfolio;
 
   // Local state for configuration adjustments
@@ -72,6 +72,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          mode: portfolioMode,
           targetProfitPercent: targetProfit / 100,
           stopLossPercent: stopLoss / 100,
           maxPositions: Number(maxPositions),
@@ -81,7 +82,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       if (!res.ok) throw new Error("Failed to save settings");
       const data = await res.json();
       onConfigUpdate(data.config);
-      setMessage("Configuration saved successfully.");
+      setMessage(`Configuration saved successfully for ${portfolioMode === 'live' ? 'Live Portfolio' : 'Backtest'}.`);
     } catch (err) {
       console.error(err);
       setMessage("Error: Could not save configuration.");
@@ -102,13 +103,16 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       const res = await fetch(`${API_URL}/api/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: Number(depositAmount) })
+        body: JSON.stringify({
+          mode: portfolioMode,
+          amount: Number(depositAmount)
+        })
       });
       if (!res.ok) throw new Error("Deposit failed");
       const data = await res.json();
       onDeposit(data.state);
       setDepositAmount('');
-      setMessage(`Successfully injected ₹${Number(depositAmount).toLocaleString('en-IN')} cash into account!`);
+      setMessage(`Successfully injected ₹${Number(depositAmount).toLocaleString('en-IN')} cash into ${portfolioMode === 'live' ? 'Live Portfolio' : 'Backtest'}!`);
     } catch (err) {
       console.error(err);
       setMessage("Error: Capital injection failed.");
@@ -121,11 +125,15 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
     setRunning(true);
     setMessage('');
     try {
-      const res = await fetch(`${API_URL}/api/trigger-run`, { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/trigger-run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: portfolioMode })
+      });
       if (!res.ok) throw new Error("Trigger run failed");
       const data = await res.json();
       onTriggerRun(data.state);
-      setMessage("Daily run catch-up completed.");
+      setMessage(`Daily run catch-up completed for ${portfolioMode === 'live' ? 'Live Portfolio' : 'Backtest'}.`);
     } catch (err) {
       console.error(err);
       setMessage("Error: Daily simulation run failed.");
@@ -136,9 +144,9 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
   const handleResetCustomDate = async (targetDate = selectedStartDate, replay = autoReplay) => {
     const isToday = targetDate === 'today' || targetDate === todayStr;
-    const confirmMessage = isToday
-      ? `Are you sure you want to reset the simulation starting TODAY (${todayStr})?\n\nAll current trade history, active holdings, and logs will be wiped. The account will start fresh today with initial ₹1,00,000 cash.`
-      : `Are you sure you want to reset the simulation to start on ${targetDate}?\n\nAll current trade history, active holdings, and logs will be wiped, returning account cash to initial ₹1,00,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
+    const confirmMessage = (portfolioMode === 'live' || isToday)
+      ? `Are you sure you want to reset the Live Portfolio to a fresh ₹1,00,000 cash slate today?\n\nAll current live holdings and history will be cleared.`
+      : `Are you sure you want to reset the backtest simulation to start on ${targetDate}?\n\nAll current trade history will be reset to initial ₹1,00,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
 
     if (!window.confirm(confirmMessage)) return;
 
@@ -149,6 +157,7 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          mode: portfolioMode,
           startDate: targetDate,
           replay: isToday ? false : replay
         })
@@ -157,8 +166,8 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
       const data = await res.json();
       onReset(data.state);
       setMessage(
-        isToday
-          ? `Simulation successfully reset to Today (${todayStr}) with clean ₹1,00,000 slate.`
+        portfolioMode === 'live'
+          ? "Live Portfolio successfully reset to clean ₹1,00,000 slate."
           : `Simulation successfully reset to ${targetDate}${replay ? ' and backtest replayed to today.' : '.'}`
       );
     } catch (err) {
@@ -173,6 +182,22 @@ export default function ConfigTab({ portfolio, onConfigUpdate, onReset, onDeposi
 
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      {/* Active Portfolio Info Banner */}
+      <div className="glass-panel" style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderLeft: portfolioMode === 'live' ? '4px solid var(--green)' : '4px solid var(--accent)' }}>
+        <div>
+          <span style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em', color: portfolioMode === 'live' ? 'var(--green)' : 'var(--accent)' }}>
+            Configuring Active Portfolio
+          </span>
+          <h3 style={{ margin: '0.2rem 0 0', fontSize: '1.1rem', fontWeight: '700' }}>
+            {portfolioMode === 'live' ? 'Live Forward Trading Desk (₹1,00,000 Starting Slate)' : 'Backtesting Simulation Portfolio'}
+          </h3>
+        </div>
+        <span className={`status-badge ${portfolioMode === 'live' ? 'live' : 'closed'}`} style={{ padding: '0.35rem 0.8rem' }}>
+          <span className="status-dot" />
+          <span>{portfolioMode === 'live' ? 'LIVE DESK ACTIVE' : 'BACKTEST ACTIVE'}</span>
+        </span>
+      </div>
 
       {/* Alert Messages banner */}
       {message && (

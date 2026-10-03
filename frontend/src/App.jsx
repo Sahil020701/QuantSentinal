@@ -11,21 +11,23 @@ import AlgoTop25Tab from './components/AlgoTop25Tab';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export default function App() {
+  const [portfolioMode, setPortfolioMode] = useState(() => {
+    return localStorage.getItem('qs_portfolio_mode') || 'live';
+  });
   const [portfolio, setPortfolio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
-    fetchPortfolio();
+    fetchPortfolio(portfolioMode);
   }, []);
 
-  const fetchPortfolio = async () => {
+  const fetchPortfolio = async (mode = portfolioMode) => {
     setLoading(true);
     setError(null);
     try {
-      // API call automatically triggers catch-up simulation in backend
-      const res = await fetch(`${API_URL}/api/portfolio`);
+      const res = await fetch(`${API_URL}/api/portfolio?mode=${mode}`);
       if (!res.ok) throw new Error("Failed to load portfolio statistics");
       const data = await res.json();
       setPortfolio(data);
@@ -35,6 +37,13 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSwitchMode = (newMode) => {
+    if (newMode === portfolioMode) return;
+    setPortfolioMode(newMode);
+    localStorage.setItem('qs_portfolio_mode', newMode);
+    fetchPortfolio(newMode);
   };
 
   // Determine market open status (Indian Stock Market: Monday to Friday)
@@ -64,7 +73,7 @@ export default function App() {
       <div className="spinner-container" style={{ minHeight: '100vh' }}>
         <div className="spinner" />
         <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', fontWeight: '500' }}>
-          Loading Portfolio & Running Catch-up Simulation...
+          Loading {portfolioMode === 'live' ? 'Live Portfolio' : 'Backtest Simulation'}...
         </span>
       </div>
     );
@@ -82,7 +91,7 @@ export default function App() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: '1.6' }}>
             {error}
           </p>
-          <button onClick={fetchPortfolio} className="btn btn-primary">
+          <button onClick={() => fetchPortfolio(portfolioMode)} className="btn btn-primary">
             Attempt Connection
           </button>
         </div>
@@ -98,8 +107,40 @@ export default function App() {
           <div className="logo-badge">QS</div>
           <div className="brand-info">
             <h1>Quant Sentinal Trading Desk</h1>
-            <p>Aggressive Indian Equities Portfolio Simulator</p>
+            <p>
+              {portfolioMode === 'live'
+                ? 'Forward Live Trading Desk (₹1,00,000 Capital Baseline)'
+                : 'Historical Algorithmic Backtesting Simulator'}
+            </p>
           </div>
+        </div>
+
+        {/* Portfolio Mode Switcher Toggle */}
+        <div className="portfolio-switcher">
+          <button
+            type="button"
+            className={`portfolio-toggle-btn ${portfolioMode === 'live' ? 'active-live' : ''}`}
+            onClick={() => handleSwitchMode('live')}
+            title="Live Trading Portfolio with ₹1,00,000 Starting Baseline"
+          >
+            <span className="mode-indicator live-dot" />
+            <div className="mode-text-group">
+              <span className="mode-title">Live Portfolio</span>
+              <span className="mode-sub">₹1,00,000 Live Desk</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            className={`portfolio-toggle-btn ${portfolioMode === 'backtest' ? 'active-backtest' : ''}`}
+            onClick={() => handleSwitchMode('backtest')}
+            title="Historical Backtest Simulation (49.9% CAGR, 161 Trades)"
+          >
+            <span className="mode-indicator backtest-dot" />
+            <div className="mode-text-group">
+              <span className="mode-title">Backtesting</span>
+              <span className="mode-sub">Historical Simulation</span>
+            </div>
+          </button>
         </div>
 
         <div className={`status-badge ${marketStatus.open ? 'live' : 'closed'}`}>
@@ -138,7 +179,7 @@ export default function App() {
           onClick={() => setActiveTab('ledger')}
           className={`tab-btn ${activeTab === 'ledger' ? 'active' : ''}`}
         >
-          Closed Trades ({portfolio.history.length})
+          Closed Trades ({portfolio?.history?.length || 0})
         </button>
         <button
           onClick={() => setActiveTab('config')}
@@ -151,7 +192,11 @@ export default function App() {
       {/* Main Tab Render */}
       <main style={{ flex: 1 }}>
         {activeTab === 'dashboard' && (
-          <DashboardTab portfolio={portfolio} />
+          <DashboardTab
+            portfolio={portfolio}
+            portfolioMode={portfolioMode}
+            onPortfolioRefresh={() => fetchPortfolio(portfolioMode)}
+          />
         )}
 
         {activeTab === 'scanner' && (
@@ -159,7 +204,10 @@ export default function App() {
         )}
 
         {activeTab === 'algo' && (
-          <AlgoTop25Tab />
+          <AlgoTop25Tab
+            portfolioMode={portfolioMode}
+            onTradeExecuted={() => fetchPortfolio(portfolioMode)}
+          />
         )}
 
         {activeTab === 'logs' && (
@@ -173,6 +221,7 @@ export default function App() {
         {activeTab === 'config' && (
           <ConfigTab
             portfolio={portfolio}
+            portfolioMode={portfolioMode}
             onConfigUpdate={(newConfig) => {
               setPortfolio(prev => ({ ...prev, config: newConfig }));
             }}
@@ -192,7 +241,7 @@ export default function App() {
 
       {/* Footer copyright */}
       <footer style={{ marginTop: '3rem', padding: '1rem 0', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-        <span>Quant Sentinal Trading System • Aim: 15%-20% Annual Target</span>
+        <span>Quant Sentinal Trading System - Aim: 15%-20% Annual Target</span>
         <span>Simulated on National Stock Exchange (NSE) Indices</span>
       </footer>
     </div>

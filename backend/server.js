@@ -15,7 +15,10 @@ const {
   deployIdleCash,
   getWatchlistQuotes,
   getTop25AlgoRankings,
-  getLatestCompletedMarketDate
+  getLatestCompletedMarketDate,
+  initLivePortfolio,
+  executeLiveTrade,
+  closeLiveTrade
 } = require('./engine');
 
 const app = express();
@@ -103,10 +106,11 @@ function getLatestTradingDateIST() {
 // Backwards-compatible alias used throughout server routes
 const getTodayUTCDateString = getLatestTradingDateIST;
 
-// GET Portfolio (Instant response)
+// GET Portfolio (Instant response for requested mode: live or backtest)
 app.get('/api/portfolio', async (req, res) => {
   try {
-    const state = await loadState();
+    const mode = (req.query.mode === 'live') ? 'live' : 'backtest';
+    const state = await loadState(mode);
     res.json(state);
   } catch (error) {
     console.error("Error in GET /api/portfolio:", error);
@@ -150,11 +154,12 @@ app.get('/api/algo-top25', async (req, res) => {
 // POST Trigger Catch-up Run Manually
 app.post('/api/trigger-run', async (req, res) => {
   try {
+    const mode = (req.body?.mode === 'live' || req.query.mode === 'live') ? 'live' : 'backtest';
     const todayStr = getTodayUTCDateString();
-    console.log(`Manual trigger run requested up to ${todayStr}...`);
-    let state = await runSimulation(todayStr, true);
-    state = await deployIdleCash(todayStr);
-    res.json({ message: "Simulation catch-up and cash deployment completed.", state });
+    console.log(`Manual trigger run requested up to ${todayStr} for ${mode}...`);
+    let state = await runSimulation(todayStr, true, mode);
+    state = await deployIdleCash(todayStr, mode);
+    res.json({ message: `Simulation catch-up completed for ${mode} portfolio.`, state });
   } catch (error) {
     console.error("Error in manual run:", error);
     res.status(500).json({ error: "Failed to run simulation", details: error.message });
@@ -164,23 +169,29 @@ app.post('/api/trigger-run', async (req, res) => {
 // POST Reset Simulation
 app.post('/api/reset', async (req, res) => {
   try {
-    const { startDate, replay = true } = req.body || {};
+    const { startDate, replay = true, mode = 'backtest' } = req.body || {};
     const todayStr = getTodayUTCDateString();
+
+    if (mode === 'live') {
+      console.log("Resetting Live Portfolio to fresh ₹1,00,000 baseline today...");
+      const state = await initLivePortfolio();
+      return res.json({ message: "Live Portfolio reset successfully with clean ₹1,00,000 slate.", state });
+    }
+
     const minHistoryDateStr = '2019-01-01';
-    // Support historical backtesting from 2019 through current session
     let rawStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2023-10-01');
     const targetStartDate = rawStartDate < minHistoryDateStr ? minHistoryDateStr : rawStartDate;
 
-    console.log(`Resetting simulation baseline to ${targetStartDate} (replay=${replay})...`);
-    let state = await resetSimulation(targetStartDate);
+    console.log(`Resetting backtest baseline to ${targetStartDate} (replay=${replay})...`);
+    let state = await resetSimulation(targetStartDate, 'backtest');
 
     if (replay && targetStartDate < todayStr) {
-      console.log(`Auto-replaying simulation from ${targetStartDate} to ${todayStr}...`);
-      state = await runSimulation(todayStr, false);
-      state = await deployIdleCash(todayStr);
+      console.log(`Auto-replaying backtest from ${targetStartDate} to ${todayStr}...`);
+      state = await runSimulation(todayStr, false, 'backtest');
+      state = await deployIdleCash(todayStr, 'backtest');
     }
 
-    res.json({ message: `Simulation reset successful with start date ${targetStartDate}.`, state });
+    res.json({ message: `Backtest simulation reset successful with start date ${targetStartDate}.`, state });
   } catch (error) {
     console.error("Error resetting simulation:", error);
     res.status(500).json({ error: "Failed to reset simulation" });
@@ -190,6 +201,7 @@ app.post('/api/reset', async (req, res) => {
 // POST Update Configurations
 app.post('/api/config', async (req, res) => {
   try {
+    const mode = (req.body?.mode === 'live' || req.query.mode === 'live') ? 'live' : 'backtest';
     const {
       targetProfitPercent,
       stopLossPercent,
@@ -199,15 +211,13 @@ app.post('/api/config', async (req, res) => {
       rotationMinCandidateScore,
       rotationMaxUnderperformerProfit
     } = req.body;
-    const state = await loadState();
+    const state = await loadState(mode);
 
     if (targetProfitPercent !== undefined) state.config.targetProfitPercent = Number(targetProfitPercent);
     if (stopLossPercent !== undefined) state.config.stopLossPercent = Number(stopLossPercent);
     if (maxPositions !== undefined) state.config.maxPositions = Number(maxPositions);
     if (aggressiveness !== undefined) state.config.aggressiveness = aggressiveness;
 
-    // Retroactively update targetPrice and stopLoss on all open holdings
-    // so that config changes take effect immediately, not just on future buys.
     if (targetProfitPercent !== undefined || stopLossPercent !== undefined) {
       if (state.holdings && state.holdings.length > 0) {
         state.holdings = state.holdings.map(h => ({
@@ -215,7 +225,6 @@ app.post('/api/config', async (req, res) => {
           targetPrice: h.buyPrice * (1 + state.config.targetProfitPercent),
           stopLoss: h.buyPrice * (1 - state.config.stopLossPercent),
         }));
-        console.log(`Retroactively updated targetPrice/stopLoss for ${state.holdings.length} open holdings.`);
       }
     }
 
@@ -223,16 +232,12 @@ app.post('/api/config', async (req, res) => {
     if (rotationMinCandidateScore !== undefined) state.config.rotationMinCandidateScore = Number(rotationMinCandidateScore);
     if (rotationMaxUnderperformerProfit !== undefined) state.config.rotationMaxUnderperformerProfit = Number(rotationMaxUnderperformerProfit);
 
-    await saveState(state);
-    console.log("Configurations updated:", state.config);
+    await saveState(state, mode);
+    console.log(`Configurations updated for ${mode}:`, state.config);
 
-    // Immediately re-evaluate open positions against the new target/stop values.
-    // This handles the case where the simulation is already up to date (no new trading
-    // days) but a position has already crossed the new threshold on the last simulated day.
     let reEvalResult = null;
     if (targetProfitPercent !== undefined || stopLossPercent !== undefined) {
-      reEvalResult = await reEvaluateHoldings();
-      console.log(`Re-evaluation complete: ${reEvalResult.closedTrades.length} position(s) booked.`);
+      reEvalResult = await reEvaluateHoldings(mode);
     }
 
     res.json({
@@ -250,15 +255,15 @@ app.post('/api/config', async (req, res) => {
 // POST Deposit Extra Capital Manually
 app.post('/api/deposit', async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, mode = 'backtest' } = req.body;
     if (!amount || isNaN(amount) || amount <= 0) {
       return res.status(400).json({ error: "Invalid deposit amount" });
     }
 
-    const state = await loadState();
+    const pType = (mode === 'live') ? 'live' : 'backtest';
+    const state = await loadState(pType);
     state.cash += Number(amount);
 
-    // Update the last history element to adjust totalDeposited
     const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
     const currentDeposits = lastVal ? lastVal.totalDeposited : 100000.0;
     const newDeposits = currentDeposits + Number(amount);
@@ -273,19 +278,48 @@ app.post('/api/deposit', async (req, res) => {
     state.logs.unshift({
       date: getTodayUTCDateString(),
       sentiment: 'NEUTRAL',
-      text: `MANUAL CAPITAL INJECTION: Deposited an additional ₹${amount.toLocaleString('en-IN')}.00 cash. Total cash capital available for trades: ₹${state.cash.toFixed(2)}.`
+      text: `MANUAL CAPITAL INJECTION (${pType.toUpperCase()}): Deposited an additional ₹${amount.toLocaleString('en-IN')}.00 cash. Total cash capital available: ₹${state.cash.toFixed(2)}.`
     });
 
-    await saveState(state);
-    console.log(`Manual deposit of ₹${amount} completed. Cash: ₹${state.cash}`);
+    await saveState(state, pType);
+    console.log(`Manual deposit of ₹${amount} completed for ${pType}. Cash: ₹${state.cash}`);
 
-    // Immediately deploy newly injected cash into candidates on current simulation date
-    const updatedState = await deployIdleCash(getTodayUTCDateString());
+    const updatedState = await deployIdleCash(getTodayUTCDateString(), pType);
 
-    res.json({ message: "Deposit completed and cash deployed into active market setups.", state: updatedState });
+    res.json({ message: `Deposit completed for ${pType} portfolio.`, state: updatedState });
   } catch (error) {
     console.error("Error making manual deposit:", error);
     res.status(500).json({ error: "Failed to process manual deposit" });
+  }
+});
+
+// POST Live Order Buy / Entry
+app.post('/api/live/buy', async (req, res) => {
+  try {
+    const { symbol, name, sector, quantity, price, stopLoss, targetPrice, reason } = req.body;
+    if (!symbol || !quantity || !price) {
+      return res.status(400).json({ error: "Symbol, quantity, and price are required." });
+    }
+    const state = await executeLiveTrade({ symbol, name, sector, quantity, price, stopLoss, targetPrice, reason });
+    res.json({ message: `Successfully executed live buy for ${quantity}x ${symbol}.`, state });
+  } catch (error) {
+    console.error("Error in live buy:", error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// POST Live Order Sell / Close
+app.post('/api/live/sell', async (req, res) => {
+  try {
+    const { symbol, price, reason } = req.body;
+    if (!symbol) {
+      return res.status(400).json({ error: "Symbol is required to close position." });
+    }
+    const state = await closeLiveTrade({ symbol, price, reason });
+    res.json({ message: `Successfully closed live holding for ${symbol}.`, state });
+  } catch (error) {
+    console.error("Error in live sell:", error.message);
+    res.status(400).json({ error: error.message });
   }
 });
 

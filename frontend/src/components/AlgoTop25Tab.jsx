@@ -3,7 +3,7 @@ import MiniChart from './MiniChart';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-export default function AlgoTop25Tab() {
+export default function AlgoTop25Tab({ portfolioMode = 'live', onTradeExecuted }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -18,6 +18,48 @@ export default function AlgoTop25Tab() {
   const [userCapital, setUserCapital] = useState(100000);
   const [copiedOrderId, setCopiedOrderId] = useState(false);
   const [onlyReadyToBuy, setOnlyReadyToBuy] = useState(false);
+  const [executingLive, setExecutingLive] = useState(false);
+  const [executionFeedback, setExecutionFeedback] = useState(null);
+
+  const handleExecuteLiveBuy = async (stock, qty, price, sl, tp) => {
+    setExecutingLive(true);
+    setExecutionFeedback(null);
+    try {
+      const res = await fetch(`${API_URL}/api/live/buy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: stock.symbol,
+          name: stock.name,
+          sector: stock.sector,
+          quantity: qty,
+          price: price,
+          stopLoss: sl,
+          targetPrice: tp,
+          reason: `Algo Top 25 (${stock.strategy || 'Momentum Breakout'})`
+        })
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Order execution failed");
+      }
+      setExecutionFeedback({
+        type: 'success',
+        text: `Order Executed: Added ${qty}x ${stock.symbol.replace('.NS', '')} @ ₹${price.toFixed(2)} to Live Portfolio.`
+      });
+      if (typeof onTradeExecuted === 'function') {
+        onTradeExecuted();
+      }
+    } catch (err) {
+      console.error(err);
+      setExecutionFeedback({
+        type: 'error',
+        text: err.message
+      });
+    } finally {
+      setExecutingLive(false);
+    }
+  };
 
   const copyOrderParameters = (stock, qty, requiredCap, sl, tp, riskRs, gainRs, allocPct, grade) => {
     const sym = stock.symbol.replace('.NS', '');
@@ -1294,23 +1336,62 @@ Risk / Reward: 1 : 5.2 (Risk ₹${maxDownsideRisk.toLocaleString('en-IN')} to ga
                 </span>
               </div>
 
+              {/* Feedback Banner */}
+              {executionFeedback && (
+                <div style={{
+                  padding: '0.6rem 0.8rem',
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  background: executionFeedback.type === 'success' ? 'var(--green-glow)' : 'var(--red-glow)',
+                  border: `1px solid ${executionFeedback.type === 'success' ? 'var(--green-border)' : 'var(--red-border)'}`,
+                  color: executionFeedback.type === 'success' ? 'var(--green)' : 'var(--red)'
+                }}>
+                  {executionFeedback.text}
+                </div>
+              )}
+
               {/* Bottom Buttons */}
-              <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.25rem' }}>
+              <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
                 <button
+                  type="button"
                   onClick={() => {
                     const stock = simulateStock;
                     setSimulateStock(null);
                     setInspectStock(stock);
                   }}
                   className="btn btn-secondary"
-                  style={{ flex: '1', fontSize: '0.85rem' }}
+                  style={{ flex: '1', minWidth: '160px', fontSize: '0.85rem' }}
                 >
                   View Full Indicators &amp; Chart &rarr;
                 </button>
+
                 <button
-                  onClick={() => setSimulateStock(null)}
+                  type="button"
+                  onClick={() => handleExecuteLiveBuy(simulateStock, suggestedQty, price, stopLossPrice, targetPrice)}
+                  disabled={executingLive}
                   className="btn btn-primary"
-                  style={{ flex: '1', fontSize: '0.85rem' }}
+                  style={{
+                    flex: '1.2',
+                    minWidth: '200px',
+                    fontSize: '0.85rem',
+                    background: 'var(--green)',
+                    borderColor: 'var(--green)'
+                  }}
+                >
+                  {executingLive
+                    ? 'Executing Order...'
+                    : `Add to Live Portfolio (${suggestedQty} shares)`}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimulateStock(null);
+                    setExecutionFeedback(null);
+                  }}
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
                 >
                   Done
                 </button>

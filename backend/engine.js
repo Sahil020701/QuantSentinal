@@ -104,52 +104,116 @@ const INITIAL_STATE = {
   }
 };
 
-// Load current state (directly from MongoDB with in-memory fallback)
-async function loadState() {
-  if (mongoose.connection.readyState === 1) {
+let inMemoryLiveState = null;
+
+function getDbKey(portfolioType) {
+  return (portfolioType === 'live') ? 'live_portfolio_state' : 'simulation_state';
+}
+
+// Load current state for specified portfolio (backtest vs live)
+async function loadState(portfolioType = 'backtest') {
+  const isLive = (portfolioType === 'live');
+  const key = getDbKey(portfolioType);
+
+  if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) {
     try {
-      let doc = await StateModel.findOne({ key: 'simulation_state' });
+      let doc = await StateModel.findOne({ key }).lean();
       if (doc) {
-        inMemoryState = doc.toObject();
-        return inMemoryState;
+        doc.portfolioType = isLive ? 'live' : 'backtest';
+        if (isLive) inMemoryLiveState = doc;
+        else inMemoryState = doc;
+        return doc;
       }
     } catch (e) {
-      console.warn("MongoDB read failed:", e.message);
+      console.warn(`MongoDB read failed for ${key}:`, e.message);
     }
+  }
+
+  if (isLive) {
+    if (inMemoryLiveState) return inMemoryLiveState;
+    return await initLivePortfolio();
   }
 
   if (inMemoryState) {
     return inMemoryState;
   }
 
-  return await resetSimulation();
+  return await resetSimulation('2025-10-01', 'backtest');
 }
 
-// Save state (directly to MongoDB with in-memory tracking)
-async function saveState(state) {
-  inMemoryState = { ...state };
+// Save state for specified portfolio
+async function saveState(state, portfolioType) {
+  const pType = portfolioType || state?.portfolioType || 'backtest';
+  state.portfolioType = pType;
+  const isLive = (pType === 'live');
+  const key = getDbKey(pType);
 
-  // Persist to MongoDB if connected
-  if (mongoose.connection.readyState === 1) {
+  if (isLive) inMemoryLiveState = { ...state };
+  else inMemoryState = { ...state };
+
+  if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) {
     try {
       const stateData = { ...state };
       delete stateData._id;
       delete stateData.key;
 
       await StateModel.findOneAndUpdate(
-        { key: 'simulation_state' },
-        stateData,
+        { key },
+        { $set: stateData },
         { upsert: true, returnDocument: 'after' }
       );
     } catch (e) {
-      console.error("Error saving state to MongoDB:", e.message);
+      console.error(`Error saving ${key} to MongoDB:`, e.message);
     }
   }
 }
 
+// Initialize clean live forward portfolio with ₹1,00,000 cash starting today
+async function initLivePortfolio() {
+  const latestDate = getLatestCompletedMarketDate() || '2026-10-01';
+  let activeConfig = INITIAL_STATE.config;
+  if (inMemoryState && inMemoryState.config) {
+    activeConfig = { ...INITIAL_STATE.config, ...inMemoryState.config };
+  }
+
+  const liveState = {
+    ...JSON.parse(JSON.stringify(INITIAL_STATE)),
+    portfolioType: 'live',
+    config: activeConfig,
+    lastSimulationDate: latestDate,
+    cash: 100000.0,
+    holdings: [],
+    history: [],
+    valuationHistory: [
+      {
+        date: latestDate,
+        cash: 100000.0,
+        holdingsValue: 0.0,
+        totalValue: 100000.0,
+        profitPercent: 0.0,
+        totalDeposited: 100000.0
+      }
+    ],
+    logs: [
+      {
+        date: latestDate,
+        sentiment: 'NEUTRAL',
+        text: `Quant Sentinal Live Trading Desk online (${activeConfig.aggressiveness === 'conservative' ? 'Conservative Approach' : 'Aggressive Approach'}). Clean starting capital of ₹1,00,000.00 deposited today (${latestDate}). Ready for forward order placement, live stop-loss tracking, and broker sync.`
+      }
+    ]
+  };
+
+  await saveState(liveState, 'live');
+  return liveState;
+}
+
 // Reset state
-async function resetSimulation(customStartDate) {
-  const startDate = customStartDate || '2026-07-01';
+async function resetSimulation(customStartDate, portfolioType = 'backtest') {
+  if (portfolioType === 'live') {
+    return await initLivePortfolio();
+  }
+
+  const startDate = customStartDate || '2025-10-01';
   let activeConfig = INITIAL_STATE.config;
   if (inMemoryState && inMemoryState.config) {
     activeConfig = { ...INITIAL_STATE.config, ...inMemoryState.config };
@@ -164,6 +228,7 @@ async function resetSimulation(customStartDate) {
 
   const state = {
     ...JSON.parse(JSON.stringify(INITIAL_STATE)),
+    portfolioType: 'backtest',
     config: activeConfig,
     lastSimulationDate: startDate,
     cash: 100000.0,
@@ -187,7 +252,137 @@ async function resetSimulation(customStartDate) {
       }
     ]
   };
-  await saveState(state);
+  await saveState(state, 'backtest');
+  return state;
+}
+
+// Execute a live buy order into the live portfolio
+async function executeLiveTrade({ symbol, name, sector, quantity, price, stopLoss, targetPrice, reason, date }) {
+  const state = await loadState('live');
+  const tradeDate = date || state.lastSimulationDate || getLatestCompletedMarketDate();
+  const numQty = parseInt(quantity, 10);
+  const numPrice = parseFloat(price);
+  const cost = numQty * numPrice;
+
+  if (isNaN(numQty) || numQty <= 0 || isNaN(numPrice) || numPrice <= 0) {
+    throw new Error("Invalid quantity or price provided for live trade.");
+  }
+
+  if (state.cash < cost) {
+    throw new Error(`Insufficient live cash balance. Available: ₹${state.cash.toFixed(2)}, Required: ₹${cost.toFixed(2)}`);
+  }
+
+  const sl = parseFloat(stopLoss) || (numPrice * (1 - (state.config.stopLossPercent || 0.048)));
+  const tp = parseFloat(targetPrice) || (numPrice * (1 + (state.config.targetProfitPercent || 0.25)));
+
+  state.cash -= cost;
+
+  const existingIdx = state.holdings.findIndex(h => h.symbol === symbol);
+  if (existingIdx !== -1) {
+    const parent = state.holdings[existingIdx];
+    const totalQty = parent.quantity + numQty;
+    const totalCost = (parent.quantity * parent.buyPrice) + cost;
+    const blended = totalCost / totalQty;
+    parent.quantity = totalQty;
+    parent.buyPrice = blended;
+    parent.currentPrice = numPrice;
+    parent.value = totalQty * numPrice;
+    parent.profit = parent.value - totalCost;
+    parent.profitPercent = (parent.profit / totalCost) * 100;
+    parent.stopLoss = Math.max(parent.stopLoss || 0, sl);
+    parent.targetPrice = tp;
+    parent.isAccumulated = true;
+  } else {
+    state.holdings.push({
+      symbol,
+      name: name || symbol.replace('.NS', ''),
+      sector: sector || 'Equity',
+      quantity: numQty,
+      buyPrice: numPrice,
+      currentPrice: numPrice,
+      buyDate: tradeDate,
+      targetPrice: tp,
+      stopLoss: sl,
+      value: cost,
+      profit: 0.0,
+      profitPercent: 0.0,
+      buyReason: reason || 'Live Manual Entry',
+      slStatus: 'HARD_STOP'
+    });
+  }
+
+  let holdingsValue = 0;
+  for (const h of state.holdings) holdingsValue += h.value;
+  const totalValue = state.cash + holdingsValue;
+  const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
+  if (lastVal) {
+    lastVal.cash = state.cash;
+    lastVal.holdingsValue = holdingsValue;
+    lastVal.totalValue = totalValue;
+    lastVal.profitPercent = ((totalValue - lastVal.totalDeposited) / lastVal.totalDeposited) * 100;
+  }
+
+  state.logs.unshift({
+    date: tradeDate,
+    sentiment: 'BULLISH',
+    text: `LIVE BUY EXECUTED: Bought ${numQty}x ${symbol} @ ₹${numPrice.toFixed(2)} (₹${cost.toFixed(0)}). Stop Loss: ₹${sl.toFixed(2)}, Target: ₹${tp.toFixed(2)}.`
+  });
+
+  await saveState(state, 'live');
+  return state;
+}
+
+// Close an active holding in the live portfolio
+async function closeLiveTrade({ symbol, price, reason, date }) {
+  const state = await loadState('live');
+  const idx = state.holdings.findIndex(h => h.symbol === symbol);
+  if (idx === -1) {
+    throw new Error(`Position ${symbol} not found in live portfolio.`);
+  }
+
+  const h = state.holdings[idx];
+  const numPrice = parseFloat(price) || h.currentPrice;
+  const tradeDate = date || state.lastSimulationDate || getLatestCompletedMarketDate();
+  const proceeds = h.quantity * numPrice;
+  const cost = h.quantity * h.buyPrice;
+  const pnl = proceeds - cost;
+  const pnlPct = (pnl / cost) * 100;
+
+  state.cash += proceeds;
+  state.holdings.splice(idx, 1);
+
+  state.history.unshift({
+    symbol: h.symbol,
+    name: h.name,
+    sector: h.sector,
+    quantity: h.quantity,
+    buyPrice: h.buyPrice,
+    sellPrice: numPrice,
+    buyDate: h.buyDate,
+    sellDate: tradeDate,
+    profit: pnl,
+    profitPercent: pnlPct,
+    reason: reason || 'Live Manual Exit'
+  });
+
+  let holdingsValue = 0;
+  for (const pos of state.holdings) holdingsValue += pos.value;
+  const totalValue = state.cash + holdingsValue;
+  const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
+  if (lastVal) {
+    lastVal.cash = state.cash;
+    lastVal.holdingsValue = holdingsValue;
+    lastVal.totalValue = totalValue;
+    lastVal.profitPercent = ((totalValue - lastVal.totalDeposited) / lastVal.totalDeposited) * 100;
+  }
+
+  state.logs.unshift({
+    date: tradeDate,
+    sentiment: pnl >= 0 ? 'BULLISH' : 'BEARISH',
+    text: `LIVE POSITION CLOSED: Sold ${h.quantity}x ${symbol} @ ₹${numPrice.toFixed(2)}. P&L: ${pnl >= 0 ? '+' : ''}₹${pnl.toFixed(2)} (${pnl >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%). Reason: ${reason || 'Manual Exit'}.`
+  });
+
+  await saveState(state, 'live');
   return state;
 }
 
@@ -778,8 +973,9 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
 }
 
 // Core Simulation Function
-async function runSimulation(targetEndDateStr, forceRefresh = false) {
-  const state = await loadState();
+async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioType = 'backtest') {
+  const pType = portfolioType || 'backtest';
+  const state = await loadState(pType);
   const cachedData = await updateCache(targetEndDateStr, forceRefresh, state.lastSimulationDate);
 
   const lastRunDateStr = state.lastSimulationDate;
@@ -1419,7 +1615,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
     state.lastSimulationDate = simDate;
   }
 
-  await saveState(state);
+  await saveState(state, pType);
   return state;
 }
 
@@ -1969,8 +2165,9 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
 // Re-evaluate all open holdings against current config targets using the last known price.
 // Called immediately after a config change so new profit/stop targets take effect without
 // needing to wait for the next trading day simulation.
-async function reEvaluateHoldings() {
-  const state = await loadState();
+async function reEvaluateHoldings(portfolioType = 'backtest') {
+  const pType = portfolioType || 'backtest';
+  const state = await loadState(pType);
   if (!state.holdings || state.holdings.length === 0) {
     console.log('[reEvaluate] No open holdings to re-evaluate.');
     return { closedTrades: [], remainingHoldings: [] };
@@ -2110,15 +2307,16 @@ async function reEvaluateHoldings() {
   }
 
   state.holdings = remainingHoldings;
-  await saveState(state);
+  await saveState(state, pType);
 
   console.log(`[reEvaluate] Done. Closed ${closedTrades.length} position(s), ${remainingHoldings.length} still open.`);
   return { state, closedTrades };
 }
 
 // Deploy available cash into candidate setups immediately on current simulation date
-async function deployIdleCash(simDate) {
-  const state = await loadState();
+async function deployIdleCash(simDate, portfolioType = 'backtest') {
+  const pType = portfolioType || 'backtest';
+  const state = await loadState(pType);
   const targetDate = simDate || state.lastSimulationDate;
   const cachedData = await updateCache(targetDate);
 
@@ -2264,7 +2462,7 @@ async function deployIdleCash(simDate) {
       lastVal.totalValue = totalValue;
       lastVal.profitPercent = ((totalValue - lastVal.totalDeposited) / lastVal.totalDeposited) * 100;
     }
-    await saveState(state);
+    await saveState(state, pType);
   }
 
   return state;
@@ -2282,6 +2480,9 @@ module.exports = {
   evaluateMarketRegime,
   scanMarketCandidates,
   getTop25AlgoRankings,
+  initLivePortfolio,
+  executeLiveTrade,
+  closeLiveTrade,
   getLatestCompletedMarketDate,
   updateCache
 };
