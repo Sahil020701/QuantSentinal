@@ -788,16 +788,10 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
 
       // Dynamic Profit Protection (Swing Trading Capital Preservation Ladder):
       // Level 0: At +3.0% peak gain -> Move stop loss to Breakeven (+1.2% profit cushion)
-      // Note: If already partial-scaled at +1.2%, we do not overwrite the breathing room stop (-3.0%)
-      // unless price subsequently climbs back above +4.0%
-      if (peakProfitGainPercent >= 3.0 && !position.isPartialScaled) {
+      if (peakProfitGainPercent >= 3.0) {
         const beLevel = position.buyPrice * 1.012;
         if (beLevel > position.stopLoss) position.stopLoss = beLevel;
-      } else if (position.isPartialScaled && currentGainPct >= 4.0) {
-        const beLevel = position.buyPrice * 1.00;
-        if (beLevel > position.stopLoss) position.stopLoss = beLevel;
       }
-
 
       // Level 1: At +11.0% peak gain -> Lock in +5.5% minimum profit
       if (peakProfitGainPercent >= 11.0) {
@@ -824,9 +818,8 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         if (runnerTrail > position.stopLoss) position.stopLoss = runnerTrail;
       }
 
-      // --- 1. Partial Scale-Out at Breakeven (+1.2% Cushion) ---
-      // If trailing stop (+1.2%) is breached and position has >= 2 shares and hasn't scaled out yet:
-      // Sell 50% to lock profit, and set remaining 50% stop loss to -3.0% to give room for runner continuation
+      // --- 1. Clean Trailing Profit Lock ---
+      // If trailing stop is breached, exit full position at stopLoss (or open if gapped down)
       const isTrailingStop = position.stopLoss > position.buyPrice;
       const trailingBreach = close <= position.stopLoss;
       const initialBreach = close <= position.stopLoss || low <= position.stopLoss;
@@ -834,12 +827,8 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
       let partialSellQty = 0;
       let partialSellReason = '';
 
-      if (isTrailingStop && trailingBreach && !position.isPartialScaled && position.quantity >= 2 && position.stopLoss <= position.buyPrice * 1.015) {
-        partialSellQty = Math.floor(position.quantity * 0.5);
-        partialSellReason = '50% Profit Locked @ +1.2% (Breathing Room SL set to -3%)';
-      }
       // Full Stop or Full Trailing Exit
-      else if (isTrailingStop ? trailingBreach : initialBreach) {
+      if (isTrailingStop ? trailingBreach : initialBreach) {
         triggerSell = true;
         sellPrice = (dayBar.open && dayBar.open < position.stopLoss) ? dayBar.open : position.stopLoss;
         sellReason = isTrailingStop ? 'Trailing Profit Locked' : 'Stop Loss Triggered';
@@ -891,11 +880,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false) {
         state.cash += pRevenue;
         position.quantity -= partialSellQty;
 
-        if (partialSellReason.includes('Breathing Room')) {
-          position.isPartialScaled = true;
-          // Set breathing room stop loss for remaining shares to -3.0% from original entry
-          position.stopLoss = position.buyPrice * 0.97;
-        } else if (partialSellReason.includes('Parabolic Climax')) {
+        if (partialSellReason.includes('Parabolic Climax')) {
           position.isClimaxScaled = true;
           // Trail remaining shares on EMA20
           position.stopLoss = Math.max(position.stopLoss, dayEma20 ? dayEma20 * 0.99 : position.buyPrice * 1.15);
