@@ -26,28 +26,35 @@
 6. [Risk Management & Asymmetric Payoffs ($1 : 5.2$)](#6-risk-management--asymmetric-payoffs-1--52)
 7. [Algorithmic Trailing Profit Locks (Zero-Loss Defense)](#7-algorithmic-trailing-profit-locks-zero-loss-defense)
 8. [The Complete Lifecycle of a QuantSentinel Trade](#8-the-complete-lifecycle-of-a-quantsentinel-trade)
-9. [Quick Reference Cheat Sheet](#9-quick-reference-cheat-sheet)
-10. [Glossary of Essential Terms](#10-glossary-of-essential-terms)
+9. [Strategy Modes: Conservative vs Aggressive](#9-strategy-modes-conservative-vs-aggressive)
+10. [Exit Engine, Position Sizing & Market Regime](#10-exit-engine-position-sizing--market-regime)
+11. [Dual Portfolios: Backtesting vs Live Desk](#11-dual-portfolios-backtesting-vs-live-desk)
+12. [Dashboard, Holdings & Trade Plan Guide](#12-dashboard-holdings--trade-plan-guide)
+13. [Strategy Config, Backtest Durations & Running the System](#13-strategy-config-backtest-durations--running-the-system)
+14. [Quick Reference Cheat Sheet](#14-quick-reference-cheat-sheet)
+15. [Glossary of Essential Terms](#15-glossary-of-essential-terms)
 
 ---
 
 ## 1. Executive Summary: What is QuantSentinel?
 
-**QuantSentinel** is an autonomous, quantitative algorithmic trading desk designed specifically for the **Indian National Stock Exchange (NSE)**. 
+**QuantSentinel** is a quantitative algorithmic trading desk designed specifically for the **Indian National Stock Exchange (NSE)**. It generates ranked trade setups, simulates them historically, and tracks a real forward-money portfolio that you execute at your broker.
 
 Instead of relying on tips, news headlines, television anchors, or human emotions (fear, greed, hope, panic), QuantSentinel operates like an institutional hedge fund:
-- **Massive Universe Scanning**: Every single evening after market close (15:30 IST), it systematically scans **500+ NSE stocks** (Large Cap, Mid Cap, and Small Cap).
-- **Multi-Factor Confluence**: It passes each stock through **8 rigorous mathematical indicator models**. Over 99% of stocks fail these checks and are rejected.
-- **Asymmetric Risk/Reward**: It only enters setups where the upside potential is at least **$5.2\times$ greater** than the downside risk (+25.0% profit target vs. -4.8% hard stop-loss).
-- **Dynamic Protection**: It automatically trails stop-losses to **Breakeven** at +10% gain, and locks in **+8% guaranteed profit** at +15% gain, eliminating round-trip losses on winning trades.
+- **Massive Universe Scanning**: After market close (15:30 IST), it scans **500+ NSE stocks** (Large Cap, Mid Cap, and Small Cap).
+- **Multi-Factor Confluence**: Each stock passes through **8 mathematical indicator models**. The overwhelming majority of stocks fail these checks and are rejected.
+- **Two Strategy Modes**: **Conservative** (strict institutional breakouts, roughly 40 trades per year) and **Aggressive** (broad high-frequency momentum, roughly 160-170 trades per year). See [Section 9](#9-strategy-modes-conservative-vs-aggressive).
+- **Asymmetric Risk/Reward**: Every trade starts with a **-4.8% hard stop-loss** and a **+25.0% profit reference target**, a planned ratio of about 5.2 to 1.
+- **Dynamic Protection**: A multi-step trailing ladder moves the stop above entry as a trade works (+1.2% at +3% peak, +5.5% at +11%, +11.5% at +18%). Beyond +25% there is no fixed cap: the stop trails the 20 EMA so big winners can run.
+- **Two Isolated Portfolios**: A **Backtesting** portfolio for historical simulation and a **Live Portfolio** that starts with ₹1,00,000 and tracks your real trades. A header toggle switches between them. See [Section 11](#11-dual-portfolios-backtesting-vs-live-desk).
 
 ```mermaid
 flowchart LR
     A["500+ NSE Stocks Universe"] --> B["8 Quantitative Indicator Filters"]
     B --> C["Top 25 Algo Rankings (Confluence Score 0-100)"]
     C --> D["Grade A+ Setups (Score >= 93)"]
-    D --> E["Autonomous Order Execution (Limit + GTT OCO)"]
-    E --> F["Trailing Profit Locks (+10% BE, +15% Lock, +25% Target)"]
+    D --> E["Order Ticket (Limit + GTT OCO) / Add to Live Portfolio"]
+    E --> F["Trailing Ladder (+3% / +11% / +18%) then Uncapped EMA20 Runner"]
 ```
 
 ---
@@ -108,6 +115,9 @@ Extensive academic studies by financial regulators (including SEBI in India) rev
 ---
 
 ## 4. The 8 Core Indicators of QuantSentinel (Deep Dive)
+
+> [!NOTE]
+> The thresholds quoted in this section are the **Conservative** mode values. **Aggressive** mode uses looser values for several indicators (listed in [Section 9](#9-strategy-modes-conservative-vs-aggressive)). The Algo Top 25 tab shows the criteria for whichever mode is active.
 
 QuantSentinel evaluates every stock across **8 complementary indicator models**. Each indicator acts as a specialist filter examining a different dimension of market physics: Trend, Relative Strength, Volume, Momentum, Structure, Candlestick Pressure, Directional Velocity, and Extension Safety.
 
@@ -383,35 +393,47 @@ Even if all other indicators look bullish, buying an over-extended stock is fina
 
 ## 5. The Confluence Scoring Engine (0 to 100)
 
-Having individual indicators is useful, but the real secret of institutional quant trading is **Confluence**: combining all 8 indicators into a single weighted score from **0 to 100**.
+Having individual indicators is useful, but the real secret of institutional quant trading is **Confluence**: combining all 8 indicators into a single score from **0 to 100**. The scoring differs by strategy mode.
 
-### Scoring Weights Hierarchy
+### Conservative Mode Scoring
+
+A stock must pass every hard filter to be scored at all. It then starts from a base score and earns bonuses:
 
 ```
-Base Stage 2 Setup Identified:
-  ├─ Bullish Breakout + Trend + RVOL + RSI + CLV satisfied  ==> Base Score: 88
-  ├─ Trend + Breakout + RS Alpha satisfied                  ==> Base Score: 76
-  ├─ Trend + (RS Alpha OR RVOL) satisfied                   ==> Base Score: 65
-  └─ Trend only satisfied                                   ==> Base Score: 55
+Base Score: 88  (Precious Metals ETFs: 90)
 
-Multi-Factor Bonus Adjustments:
-  ├─ RS Alpha >= +8.0%  ==> +9 pts   (Alpha >= +4.0% ==> +6 pts)
-  ├─ RVOL >= 3.0x       ==> +9 pts   (RVOL >= 2.0x   ==> +6 pts)
-  ├─ 20 EMA Slope > 0.05 ==> +5 pts
-  ├─ CLV >= 70%         ==> +4 pts   (CLV < 45%      ==> -4 pts penalty)
-  ├─ Safe Extension (1% - 7.5% from EMA20) ==> +5 pts
-  ├─ Dangerous Extension (> 11% from EMA20) ==> -6 pts penalty
+Bonus Adjustments:
+  ├─ RS Alpha >= +8.0%  ==> +10 pts   (Alpha >= +4.0% ==> +7 pts)
+  ├─ RVOL >= 3.0x       ==> +10 pts   (RVOL >= 2.0x   ==> +7 pts)
+  ├─ CLV >= 70%         ==> +4 pts
   ├─ ADX >= 25.0        ==> +4 pts
-  └─ Solid Green Candle (+1.4% move & Close >= Open) ==> +4 pts
+  ├─ Market regime BULLISH ==> +3 pts  (RISK_OFF ==> -6 pts)
+  └─ Final score clamped to 50 - 100
+
+Minimum score to enter:
+  BULLISH regime = 84  |  NEUTRAL = 88  |  RISK_OFF = 92  |  Accumulation add = 84
 ```
+
+### Aggressive Mode Scoring
+
+Aggressive mode uses tiered scores instead of additive bonuses:
+
+```
+  ├─ New 20-day high + CLV >= 70% + RVOL >= 2.0x + RS Alpha >= +5%  ==> 96
+  ├─ New 20-day high + RVOL >= 1.8x                                  ==> 91
+  ├─ Coiling within 1.5% of 20-day high + RVOL >= 2.0x               ==> 86
+  └─ Any other setup that passes the hard filters                    ==> 76
+```
+
+In live deployment, a NEUTRAL regime additionally skips non-accumulation setups scoring below 76 with weak alpha, and a RISK_OFF regime only allows elite setups (score >= 90 with strong relative strength).
 
 ### Setup Grading System
 
 | Confluence Score | Conviction Grade | Algo Signal | Capital Allocation | Description |
 | :---: | :---: | :---: | :---: | :--- |
-| **93 – 99** | **Grade A+** | **STRONG BUY** | **15.0% of Portfolio** | Elite institutional setups with clean breakout, heavy volume surge, and high relative strength. |
-| **80 – 92** | **Grade A** | **BUY SETUP** | **12.5% of Portfolio** | High-probability continuation setups meeting all primary trend and momentum criteria. |
-| **60 – 79** | **Grade B** | **ACCUMULATE** | *Watchlist Only* | Valid setups with 1 or 2 minor criteria pending (e.g. awaiting breakout high). |
+| **93 – 100** | **Grade A+** | **STRONG BUY** | **15.0% of Portfolio** | Elite setups with clean breakout, heavy volume surge, and high relative strength. |
+| **80 – 92** | **Grade A** | **BUY SETUP** | **12.5% of Portfolio** | High-probability continuation setups meeting primary trend and momentum criteria. |
+| **60 – 79** | **Grade B** | **ACCUMULATE / WATCH** | *Watchlist or add-on only* | Valid setups with minor criteria pending. Adds to existing winners are allowed under the pyramiding rules. |
 | **< 60** | **Grade C / D** | **AVOID / WAIT** | *Zero Allocation* | Choppy, extended, or weak setups rejected by the filter. |
 
 ---
@@ -426,9 +448,12 @@ World-class hedge funds (like Renaissance Technologies or Stanley Druckenmiller)
 
 $$\text{Hard Initial Stop Loss} = \text{Entry Price} \times (1 - 0.048) \implies \mathbf{-4.8\%}$$
 
-$$\text{Algorithmic Profit Target} = \text{Entry Price} \times (1 + 0.250) \implies \mathbf{+25.0\%}$$
+$$\text{Profit Reference Target} = \text{Entry Price} \times (1 + 0.250) \implies \mathbf{+25.0\%}$$
 
-$$\text{Risk / Reward Ratio} = \frac{+25.0\%}{4.8\%} = \mathbf{5.21 : 1}$$
+$$\text{Planned Risk / Reward Ratio} = \frac{+25.0\%}{4.8\%} = \mathbf{5.21 : 1}$$
+
+> [!NOTE]
+> The +25.0% target is the **planning reference** used on the order ticket and as the GTT target. In the engine, a trade that reaches +25% peak gain is **not** sold at a fixed price: its stop switches to a 20 EMA trailing runner (see [Section 7](#7-algorithmic-trailing-profit-locks-zero-loss-defense)), so winners can finish well above +25%. Both values (-4.8% and +25%) are editable in Strategy Config.
 
 ```
 Risk ₹1.00  ──►  Target ₹5.21
@@ -448,37 +473,37 @@ Because our winners are **$5.2\times$ larger than our losers**, you could lose 7
 
 ## 7. Algorithmic Trailing Profit Locks (Zero-Loss Defense)
 
-A major psychological frustration for traders is watching a stock gain +12%, fail to hit the final target, reverse, and turn into a painful -5% loss. 
+A major psychological frustration for traders is watching a stock gain +12%, reverse, and turn into a painful -5% loss.
 
-QuantSentinel completely eliminates this problem with its **Three-Tier Trailing Profit Lock System**:
+QuantSentinel addresses this with a **Multi-Step Trailing Ladder**. The ladder is driven by the trade's **peak gain** (the highest price reached since entry, measured on the daily high), and a stop-loss only ever moves **up**, never down.
 
 ```
-Trade Progression:
- 
- 0% Entry ─────────► +10% Gain ─────────────► +15% Gain ─────────────► +25% Target
-   │                   │                        │                        │
-   ▼                   ▼                        ▼                        ▼
-Initial Stop Loss    Stop Loss Trailed        Stop Loss Trailed        Full Profit Booked
-   [-4.8%]            to BREAKEVEN [0%]       to LOCK PROFIT [+8%]     [+25.0% GAIN]
- (Max Downside Risk)  (Zero Risk Remaining)   (Guaranteed Winning Trade)(Mission Accomplished)
+Peak Gain Reached      New Stop-Loss Level
+  Entry (0%)       ──► Entry x 0.952            (-4.8% hard stop)
+  +3.0%            ──► Entry x 1.012            (+1.2% cushion: cannot lose money)
+  +11.0%           ──► Entry x 1.055            (+5.5% locked)
+  +18.0%           ──► Entry x 1.115            (+11.5% locked)
+  +25.0%           ──► 20 EMA x 0.99            (uncapped runner, no fixed exit)
+  +35.0%           ──► 20 EMA x 0.995           (tight runner, captures the apex)
 ```
 
-1. **Tier 1 (Initial Entry)**: 
-   - Stop Loss is set at **$-4.8\%$** below entry price. 
-   - Capital is strictly protected.
-2. **Tier 2 (The Breakeven Lock at $+10\%$ Gain)**:
-   - When the stock reaches **$+10.0\%$** unrealized profit, the engine automatically moves the Stop Loss to **$\text{Entry Price} \times 1.00$ (Breakeven)**.
-   - The trade is now **100% Risk-Free**. Worst case scenario: you get out at zero loss.
-3. **Tier 3 (The Profit Lock at $+15\%$ Gain)**:
-   - When the stock reaches **$+15.0\%$** unrealized profit, the engine trails the Stop Loss upward to lock in **$+8.0\%$ guaranteed net profit**.
-   - Even if the company CEO resigns or a black-swan event hits the market overnight, you walk away with a guaranteed +8% profit.
-4. **Tier 4 (Final Target at $+25\%$ Gain)**:
-   - When price touches **$+25.0\%$**, the full position is liquidated into cash, locking in the capital gains and freeing up money for the next trade.
+1. **Step 1 (Initial Entry)**: Stop-loss at **-4.8%** below entry. Capital is strictly protected.
+2. **Step 2 (+3% peak)**: Stop moves to **+1.2% above entry**. The trade can no longer lose money.
+3. **Step 3 (+11% peak)**: Stop moves to **+5.5%**. A minimum profit is locked in.
+4. **Step 4 (+18% peak)**: Stop moves to **+11.5%**.
+5. **Step 5 (+25% peak, Uncapped Runner)**: The fixed ceiling is removed. The stop trails **1% below the 20-day EMA**, so multi-bagger moves (+40% to +80%) are not cut short.
+6. **Step 6 (+35% peak)**: The trail tightens to **0.5% below the 20 EMA** to capture the top of a big run.
+
+If the stop is above the entry price when it is hit, the exit is labelled **Trailing Profit Locked**; otherwise it is **Stop Loss Triggered**. If a stock gaps below the stop at the open, the exit fills at the open price.
+
+> [!IMPORTANT]
+> Earlier versions of this guide described breakeven at +10%, an +8% lock at +15% and a hard sell at +25%. That is **no longer how the engine works**. The ladder above is the current behavior in `backend/engine.js`, and the dashboard Trade Plan panel mirrors it.
 
 ### Sector Concentration Defense
-To prevent correlation meltdowns (such as an IT sector crash or a Banking crisis hitting multiple positions at once), QuantSentinel enforces strict portfolio rules:
-- **Maximum 2 positions per sector**.
-- **The Risk-Free Prerequisite**: A 2nd position in any sector is **strictly forbidden** until the 1st position's Stop Loss has been successfully moved to Breakeven or profit lock.
+To prevent correlation meltdowns (such as an IT sector crash or a Banking crisis hitting multiple positions at once), QuantSentinel enforces portfolio rules:
+- **Maximum 2 positions per sector** for new entries during the scan. The idle-cash deployment pass allows up to 3 per sector.
+- **Index ETFs are excluded** from stock selection. They are used only as benchmarks for the market regime.
+- **Algo Top 25 qualification**: a 2nd position in a sector is only flagged as buyable once the first position is risk-free.
 
 ---
 
@@ -493,46 +518,189 @@ sequenceDiagram
     participant NSE as NSE Market Data Feed
     participant Broker as Broker Terminal (Zerodha/Groww)
 
-    Note over User,Broker: 1. EVENING SCAN (15:45 IST)
+    Note over User,Broker: 1. EVENING SCAN (after 15:30 IST)
     QS->>NSE: Fetch Daily OHLCV for 500+ Assets
     NSE-->>QS: Real Market Bars Returned
     QS->>QS: Compute 8 Indicators & Confluence Score
-    QS->>User: Display Top 25 Ranked Setups
+    QS->>User: Display Ranked Setups in Algo Top 25
 
-    Note over User,Broker: 2. SETUP QUALIFICATION & SIMULATION
-    User->>QS: Click "Order Ticket" on #1 Ranked Stock (Score >= 93)
-    QS->>User: Display Exact Limit Price, Stop Loss (-4.8%), Target (+25%) & Qty
+    Note over User,Broker: 2. SETUP QUALIFICATION & EXECUTION
+    User->>QS: Click "Order Ticket" on a QUALIFIED_BUY stock
+    QS->>User: Display Limit Price, Stop Loss (-4.8%), Target (+25%) & Qty
     User->>Broker: Place GTT OCO Limit Order before 09:15 AM
+    User->>QS: Click "Add to Live Portfolio" to log the position
 
     Note over User,Broker: 3. MARKET OPEN & TRADE MANAGEMENT
     NSE->>Broker: Market Opens at 09:15 AM; Limit Price Triggered
     Broker->>User: Buy Order Executed; SL Active at -4.8%
-    NSE->>QS: Day 3: Stock Rallies to +10.5%
-    QS->>User: Trailing SL Triggered -> Move SL to Breakeven (0% Risk)
-    NSE->>QS: Day 7: Stock Rallies to +16.2%
-    QS->>User: Trailing SL Triggered -> Lock In +8.0% Guaranteed Profit
-    NSE->>Broker: Day 12: Stock Touches +25.0% Target Price
-    Broker->>User: GTT Target Triggered -> Sold at +25% Full Profit!
+    NSE->>QS: Peak gain reaches +3%
+    QS->>User: Holdings table shows stop raised to +1.2%
+    NSE->>QS: Peak gain reaches +11% then +18%
+    QS->>User: Stop raised to +5.5% then +11.5%; update your broker GTT
+    NSE->>QS: Peak gain passes +25%
+    QS->>User: Stop now trails the 20 EMA (uncapped runner)
+    Broker->>User: Trailing stop hit -> exit with locked profit
 ```
 
 ---
 
-## 9. Quick Reference Cheat Sheet
+## 9. Strategy Modes: Conservative vs Aggressive
+
+The mode is selected in **Strategy Config** and is stored per portfolio. It changes the entry filters, the market regime test and the trade frequency.
+
+| Parameter | Conservative (~40 trades/yr) | Aggressive (~160-170 trades/yr) |
+| :--- | :--- | :--- |
+| **Price band** | ₹50 – ₹75,000 | ₹20 – ₹75,000 |
+| **Trend** | 20 EMA >= 50 EMA x 1.01, rising 20 EMA slope | 20 EMA >= 50 EMA x 1.005, price >= 50 EMA |
+| **RS Alpha vs Nifty (20d)** | >= +4.0% | >= +3.0% |
+| **Relative Volume** | >= 1.90x | >= 1.75x |
+| **RSI 14** | 52.0 – 72.5 | up to 76.5 (48.0 floor in Top 25 display) |
+| **Breakout** | Must be a new 20-day high | New 20-day high **or** within 1.5% of it (coiling) |
+| **Day move** | >= +1.8% | >= +1.4% |
+| **CLV** | >= 0.68 | >= 0.64 |
+| **ADX** | >= 20 | Not a hard filter |
+| **Extension / 10-day return** | <= 8% above 20 EMA, <= 18% in 10 days | Same |
+| **Market RISK_OFF test** | Index below 20 EMA, or 5-day return < -0.8%, or RSI < 48 | Only on a real selloff: below 98.5% of 20 EMA with (RSI < 42 or 5-day return < -2%) and below 50 EMA |
+
+Both modes require a green candle (close >= open), exclude index ETFs, and share the same exit engine and sizing.
+
+**Verified 1-year backtest (aggressive mode, 2025-10-01 to 2026-10-01, ₹1,00,000 start):** 161 completed trades, final value about ₹1,49,922 (+49.9%). Conservative mode trades far less often and is more selective. Always treat backtests as indicative rather than guaranteed future returns.
+
+---
+
+## 10. Exit Engine, Position Sizing & Market Regime
+
+### Exit Rules (checked daily, in this order)
+
+1. **Trailing / Hard Stop**: the ladder in Section 7. Stops are checked against the daily low for an untrailed hard stop and against the close once the stop is above entry.
+2. **Early Failed Breakout Cut**: days 3-4 held, gain <= -2.4%, RSI < 50 and close below 20 EMA.
+3. **Stagnation Time-Stop**: held >= 6 trading days, down more than 1% and below the 20 EMA.
+4. **Dead-Money Exit**: held >= 10 trading days, gain <= 0% and below the 20 EMA (frees capital).
+5. **Failed Follow-Through**: peak gain between +4% and +10% and then a close below the 20 EMA.
+6. **Parabolic Climax**: gain >= +20%, RSI >= 82 and price more than 12% above the 20 EMA. Sells **50%** of the position (once) and lets the rest ride the trail.
+
+### Position Sizing
+
+- **Grade A+ (score >= 93)**: 15.0% of total portfolio value. **Other setups**: 12.5%.
+- **Maximum open positions**: 10 by default (editable).
+- **Cash reserve**: the lesser of ₹2,000 or 2% of portfolio value is kept uninvested.
+- **Minimum order**: no entry if available cash is below the smaller of ₹4,000 or 4% of portfolio value. A single share is allowed for high-priced stocks if it costs no more than 35% of the portfolio.
+- **Idle-cash deployment**: up to 4 new buys per pass.
+
+### Safe Pyramiding (Accumulation)
+
+A winning position can be added to **once**, only if it has at least **+6% unrealized profit** and has been held at least 3 days. After the add, the stop is set to the blended entry price x 1.005, so the enlarged position cannot lose money.
+
+### Market Regime
+
+The Nifty 50 (or a benchmark ETF) is classified each day as **BULLISH** (above 20 EMA, positive 5-day return, RSI >= 50), **NEUTRAL**, or **RISK_OFF**. The regime adjusts the score threshold and, in live deployment, filters out weaker setups (see Section 5).
+
+---
+
+## 11. Dual Portfolios: Backtesting vs Live Desk
+
+The system keeps two completely separate portfolios in MongoDB. A toggle in the header bar switches between them, and the choice is remembered in the browser.
+
+| | **Backtesting Portfolio** | **Live Portfolio** |
+| :--- | :--- | :--- |
+| **DB key** | `simulation_state` | `live_portfolio_state` |
+| **Purpose** | Replay the strategy over history (from 2019 up to today) | Track real money you invest from today |
+| **Starting capital** | ₹1,00,000 on the chosen start date | ₹1,00,000 added on the day it was created |
+| **How trades happen** | The engine simulates every trading day automatically | **You** place orders at your broker and log them with Add to Live Portfolio |
+| **Reset** | Pick a start date and replay | Resets to a clean ₹1,00,000 slate |
+
+> [!WARNING]
+> The automatic daily scheduler only advances the **Backtesting** portfolio. The Live Portfolio does **not** yet update prices or trail stop-losses by itself. Live holdings use the stop-loss you set at entry. Update the stop manually at your broker as the trade matures, using the Trade Plan ladder as your guide. Avoid **Run Daily Catch-up** while Live is selected: it runs the automated simulation, which would place simulated trades in your real-money tracker.
+
+Live-trade actions:
+- **Add to Live Portfolio** (Algo Top 25 order modal): deducts cash, records quantity, entry, stop-loss and target.
+- **Sell / Close Position** (Dashboard Holdings): books the exit at the current price and moves it to Closed Trades.
+- **Deposit** (Strategy Config): injects extra capital into the active portfolio.
+
+---
+
+## 12. Dashboard, Holdings & Trade Plan Guide
+
+The **Portfolio Dashboard** shows portfolio value, trading P&L, annualized return (CAGR), cash balance, active holdings count, the performance chart (1M up to 5Y and ALL) and the holdings table.
+
+### Active Holdings Table
+
+Every open position shows:
+- **Position**: shares, rupee value and portfolio weight.
+- **Dynamic Stop Loss**: current stop in rupees, a status badge (HARD STOP, BREAKEVEN +1.2%, LOCKED +5.5%, LOCKED +11.5%, EMA20 RUNNER, TIGHT EMA20 RUNNER) and the **buffer** to the stop in rupees and percent.
+- **Target Upside**: the +25% reference target and the remaining upside.
+- **Trade Plan & Steps**: opens a detailed panel.
+
+### Trade Plan & Steps Panel
+
+- Entry, current price, active stop and target.
+- The 6-step trailing ladder with the current step highlighted and completed steps ticked.
+- A broker GTT box (stop-loss trigger with a 0.5% lower limit, target trigger) and a **Copy GTT Parameters** button for Zerodha Kite, Groww or AngelOne.
+- **Close Position** (Live Portfolio only).
+
+---
+
+## 13. Strategy Config, Backtest Durations & Running the System
+
+### Strategy Config
+
+All settings apply to the **currently selected portfolio**:
+- **Approach**: Conservative or Aggressive.
+- **Stop-loss %** (default 4.8), **Target %** (default 25), **Max positions** (default 10).
+- **Deposit capital**, **Run daily catch-up**, and **Reset**.
+
+### Backtest Start Presets
+
+From 2019, 5Y, 3Y, 2Y, 1Y, YTD, 6M, 3M, or Today (clean slate). Historical data is cached locally in `backend/data/market_data_5y.json` (506 symbols). The earliest supported start date is **2019-01-01**.
+
+### Running Locally
+
+```bash
+# Terminal 1: backend API (port 5001)
+cd backend && node server.js
+
+# Terminal 2: frontend (port 5173)
+cd frontend && npm run dev
+```
+
+The backend reads `MONGODB_URI` from `backend/.env` (it falls back to a local MongoDB). Logs appear in the backend terminal, including each simulated buy and sell.
+
+### API Reference (all accept `mode=live` or `mode=backtest`)
+
+| Endpoint | Purpose |
+| :--- | :--- |
+| `GET /api/portfolio?mode=` | Load portfolio state |
+| `POST /api/config` | Update strategy settings |
+| `POST /api/deposit` | Add cash |
+| `POST /api/reset` | Reset (backtest takes `startDate`, `replay`) |
+| `POST /api/trigger-run` | Run catch-up simulation |
+| `POST /api/live/buy` | Log a live buy |
+| `POST /api/live/sell` | Close a live holding |
+| `GET /api/algo-top25` | Ranked candidates |
+
+---
+
+## 14. Quick Reference Cheat Sheet
 
 | Indicator | Code Key | Formula / Basis | Exact QuantSentinel Threshold | What It Prevents |
 | :--- | :---: | :--- | :--- | :--- |
-| **Stage 2 Trend** | `trend` | $\text{Price} \ge \text{EMA20} > \text{EMA50}$ | $20 \text{ EMA} \ge 50 \text{ EMA} \times 1.01$, rising slope | Falling knives & downtrends |
-| **Relative Strength** | `rs` | $\text{Stock Return}_{20d} - \text{Nifty Return}_{20d}$ | $\text{Alpha} \ge +4.0\%$ vs Nifty 50 | Slow, lagging stocks |
-| **Relative Volume** | `rvol` | $\text{Volume} / \text{Volume SMA}_{20d}$ | $\text{RVOL} \ge 1.90\times$ (near double avg) | Low-volume false breakouts |
-| **RSI Momentum** | `rsi` | 14-period Wilder Momentum | $52.0 \le \text{RSI} \le 72.5$ | Weak chop ($<52$) & climax tops ($>75$) |
-| **20D Breakout** | `breakout`| Resistance ceiling penetration | $\text{New 20D High}$ or within $1.5\%$ | Overhead supply resistance traps |
-| **CLV Pressure** | `clv` | $(\text{Close} - \text{Low}) / (\text{High} - \text{Low})$ | $\text{CLV} \ge 68\%$ ($0.68$), Green candle | Intraday dump / Upper-wick traps |
+| **Stage 2 Trend** | `trend` | $\text{Price} \ge \text{EMA20} > \text{EMA50}$ | Cons: $20 \text{ EMA} \ge 50 \text{ EMA} \times 1.01$, rising. Aggr: $\times 1.005$ | Falling knives & downtrends |
+| **Relative Strength** | `rs` | $\text{Stock Return}_{20d} - \text{Nifty Return}_{20d}$ | Cons: $\ge +4.0\%$. Aggr: $\ge +3.0\%$ | Slow, lagging stocks |
+| **Relative Volume** | `rvol` | $\text{Volume} / \text{Volume SMA}_{20d}$ | Cons: $\ge 1.90\times$. Aggr: $\ge 1.75\times$ | Low-volume false breakouts |
+| **RSI Momentum** | `rsi` | 14-period Wilder Momentum | Cons: $52.0$ – $72.5$. Aggr: up to $76.5$ | Weak chop & climax tops |
+| **20D Breakout** | `breakout`| Resistance ceiling penetration | Cons: new 20D high. Aggr: new high or within $1.5\%$ | Overhead supply resistance traps |
+| **CLV Pressure** | `clv` | $(\text{Close} - \text{Low}) / (\text{High} - \text{Low})$ | Cons: $\ge 0.68$. Aggr: $\ge 0.64$. Green candle | Intraday dump / Upper-wick traps |
 | **ADX Velocity** | `adx` | Directional Movement Index | $\text{ADX} \ge 20.0$ | Flat, sideways, dormant markets |
 | **Extension Safety**| `safety` | $(\text{Close} - \text{EMA20}) / \text{EMA20}$ | $\le 8.0\%$ from 20 EMA, 10d return $\le 18\%$ | FOMO buying parabolic spikes |
 
 ---
 
-## 10. Glossary of Essential Terms
+## 15. Glossary of Essential Terms
+
+- **Peak Gain**: The highest price a trade has reached since entry, measured on the daily high. It drives the trailing ladder.
+- **Runner**: A trade past +25% peak gain whose stop trails the 20 EMA with no fixed exit.
+- **Market Regime**: BULLISH, NEUTRAL or RISK_OFF classification of the Nifty 50, used to tighten or loosen entries.
+- **Live Portfolio**: The forward ₹1,00,000 portfolio that tracks your real trades, separate from the backtest.
 
 - **Benchmark Index**: A broad basket of premier stocks representing the overall health of the country's economy (e.g. **Nifty 50** in India, representing the 50 largest companies).
 - **Stage 2 Uptrend**: A sustained period of months where a stock consistently makes higher highs and higher lows, guided above its 20 and 50 EMAs.

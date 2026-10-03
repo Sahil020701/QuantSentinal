@@ -17,99 +17,52 @@ export function computeHoldingTrailingInfo(position) {
   const rupeeUpside = Math.max(0, target - curr);
   const pctUpside = curr > 0 ? (rupeeUpside / curr) * 100 : 0;
 
-  // Trailing Ladder Definitions
+  // Trailing ladder mirrors the engine exit rules in backend/engine.js (runSimulation)
+  const peak = Math.max(pGain, position.peakProfitPercent || 0);
   const step1Sl = buy * 0.952;
-  const step2Trigger = buy * 1.10;
-  const step2Sl = buy;
-  const step3Trigger = buy * 1.12;
+  const step2Sl = buy * 1.012;
   const step3Sl = buy * 1.055;
-  const step4Trigger = buy * 1.15;
-  const step4Sl = buy * 1.08;
-  const step5Trigger = buy * 1.18;
-  const step5Sl = buy * 1.115;
-  const step6Target = buy * 1.25;
+  const step4Sl = buy * 1.115;
+  const ema20Runner = peak >= 25.0;
 
   let activeStep = 1;
-  let statusBadge = { label: 'HARD_STOP (-4.8%)', type: 'badge-hard-stop', step: 1 };
-
-  if (pGain >= 25.0 || curr >= step6Target) {
+  let statusBadge = { label: 'HARD STOP (-4.8%)', type: 'badge-hard-stop', step: 1 };
+  if (peak >= 35.0) {
     activeStep = 6;
-    statusBadge = { label: 'TARGET (+25%)', type: 'badge-target', step: 6 };
-  } else if (pGain >= 18.0 || currentSl >= step5Sl * 0.999) {
+    statusBadge = { label: 'TIGHT EMA20 RUNNER', type: 'badge-target', step: 6 };
+  } else if (peak >= 25.0) {
     activeStep = 5;
-    statusBadge = { label: 'LOCKED +11.5%', type: 'badge-locked-super', step: 5 };
-  } else if (pGain >= 15.0 || currentSl >= step4Sl * 0.999) {
+    statusBadge = { label: 'EMA20 RUNNER', type: 'badge-target', step: 5 };
+  } else if (peak >= 18.0) {
     activeStep = 4;
-    statusBadge = { label: 'LOCKED +8.0%', type: 'badge-locked-high', step: 4 };
-  } else if (pGain >= 12.0 || currentSl >= step3Sl * 0.999) {
+    statusBadge = { label: 'LOCKED +11.5%', type: 'badge-locked-super', step: 4 };
+  } else if (peak >= 11.0) {
     activeStep = 3;
     statusBadge = { label: 'LOCKED +5.5%', type: 'badge-locked-mid', step: 3 };
-  } else if (pGain >= 10.0 || currentSl >= step2Sl * 0.999) {
+  } else if (peak >= 3.0) {
     activeStep = 2;
-    statusBadge = { label: 'BREAKEVEN PROTECTED', type: 'badge-breakeven', step: 2 };
+    statusBadge = { label: 'BREAKEVEN +1.2%', type: 'badge-breakeven', step: 2 };
   }
 
+  const mk = (num, title, trigger, slText, desc) => ({
+    num, title, trigger, slText, desc,
+    isActive: activeStep === num,
+    isCompleted: activeStep > num
+  });
+
   const steps = [
-    {
-      num: 1,
-      title: 'Initial Hard Stop Loss (-4.8%)',
-      trigger: 'Immediate upon trade entry',
-      slPrice: step1Sl,
-      slText: `-4.80% (₹${step1Sl.toFixed(2)})`,
-      desc: 'Strict risk boundary. Auto-exits to cap maximum portfolio downside risk at 4.8%.',
-      isActive: activeStep === 1,
-      isCompleted: activeStep > 1
-    },
-    {
-      num: 2,
-      title: 'Breakeven Trailing Defense (0.0% Risk)',
-      trigger: `Price crosses +10.0% gain (₹${step2Trigger.toFixed(2)})`,
-      slPrice: step2Sl,
-      slText: `Breakeven Entry (₹${step2Sl.toFixed(2)})`,
-      desc: 'Capital protection trigger. Stop loss raised to entry price. Trade is 100% risk-free.',
-      isActive: activeStep === 2,
-      isCompleted: activeStep > 2
-    },
-    {
-      num: 3,
-      title: 'Profit Lock Tier 1 (+5.5% Secured)',
-      trigger: `Price crosses +12.0% gain (₹${step3Trigger.toFixed(2)})`,
-      slPrice: step3Sl,
-      slText: `+5.50% Secured (₹${step3Sl.toFixed(2)})`,
-      desc: 'Locking green profit. Even on a sudden gap-down reversal, +5.5% return is guaranteed.',
-      isActive: activeStep === 3,
-      isCompleted: activeStep > 3
-    },
-    {
-      num: 4,
-      title: 'Super Runner Lock (+8.0% Secured)',
-      trigger: `Price crosses +15.0% gain (₹${step4Trigger.toFixed(2)})`,
-      slPrice: step4Sl,
-      slText: `+8.00% Secured (₹${step4Sl.toFixed(2)})`,
-      desc: 'Momentum defense. Locks +8.0% minimum return while giving the asset room to reach target.',
-      isActive: activeStep === 4,
-      isCompleted: activeStep > 4
-    },
-    {
-      num: 5,
-      title: 'Compounding Lock (+11.5% Secured)',
-      trigger: `Price crosses +18.0% gain (₹${step5Trigger.toFixed(2)})`,
-      slPrice: step5Sl,
-      slText: `+11.50% Secured (₹${step5Sl.toFixed(2)})`,
-      desc: 'Elite breakout runner. Guarantees 11.5% return as price approaches full take-profit ceiling.',
-      isActive: activeStep === 5,
-      isCompleted: activeStep > 5
-    },
-    {
-      num: 6,
-      title: 'Target Profit Harvest (+25.0%)',
-      trigger: `Price hits target ceiling (₹${step6Target.toFixed(2)})`,
-      slPrice: step6Target,
-      slText: `Full Target (+25.0%)`,
-      desc: 'Target objective met (+25.0%). Book 100% gains or initiate parabolic trailing runner.',
-      isActive: activeStep === 6,
-      isCompleted: false
-    }
+    mk(1, 'Initial Hard Stop Loss', 'On entry', `-4.80% (Rs ${step1Sl.toFixed(2)})`,
+      'Strict risk boundary that caps the loss on a failed trade at 4.8%.'),
+    mk(2, 'Breakeven Protection', `Peak gain reaches +3.0% (Rs ${(buy * 1.03).toFixed(2)})`, `+1.20% (Rs ${step2Sl.toFixed(2)})`,
+      'Stop moves above entry to a +1.2% cushion, so the trade can no longer lose money.'),
+    mk(3, 'Profit Lock Tier 1', `Peak gain reaches +11.0% (Rs ${(buy * 1.11).toFixed(2)})`, `+5.50% (Rs ${step3Sl.toFixed(2)})`,
+      'Locks a minimum +5.5% profit.'),
+    mk(4, 'Profit Lock Tier 2', `Peak gain reaches +18.0% (Rs ${(buy * 1.18).toFixed(2)})`, `+11.50% (Rs ${step4Sl.toFixed(2)})`,
+      'Locks a minimum +11.5% profit.'),
+    mk(5, 'Uncapped EMA20 Runner', `Peak gain reaches +25.0% (Rs ${(buy * 1.25).toFixed(2)})`, 'Trails 1.0% below 20 EMA',
+      'No fixed exit. The stop follows the 20 EMA so multi-bagger runs are not cut short.'),
+    mk(6, 'Tight EMA20 Runner', `Peak gain reaches +35.0% (Rs ${(buy * 1.35).toFixed(2)})`, 'Trails 0.5% below 20 EMA',
+      'Trail tightens to capture the apex of a big run.')
   ];
 
   return {

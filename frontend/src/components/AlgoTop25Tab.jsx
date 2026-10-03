@@ -1330,9 +1330,9 @@ Risk / Reward: 1 : 5.2 (Risk ₹${maxDownsideRisk.toLocaleString('en-IN')} to ga
                 <strong>QuantSentinel Trade Management Plan:</strong>
                 <span style={{ marginLeft: '0.35rem' }}>
                   1. Exit immediately if price hits ₹{stopLossPrice.toFixed(2)} (-4.8%). &bull; 
-                  2. At +10% gain (₹{(price * 1.10).toFixed(2)}), trail Stop Loss to Breakeven (₹{price.toFixed(2)}). &bull; 
-                  3. At +15% gain (₹{(price * 1.15).toFixed(2)}), lock in +8% minimum profit (₹{(price * 1.08).toFixed(2)}). &bull; 
-                  4. Book 100% profit at +25% (₹{targetPrice.toFixed(2)}).
+                  2. At +3% peak gain, stop moves to +1.2% (₹{(price * 1.012).toFixed(2)}). &bull; 
+                  3. At +11% peak, lock +5.5% (₹{(price * 1.055).toFixed(2)}); at +18% peak, lock +11.5% (₹{(price * 1.115).toFixed(2)}). &bull; 
+                  4. Past +25% (₹{targetPrice.toFixed(2)}) the stop trails the 20 EMA with no fixed cap.
                 </span>
               </div>
 
