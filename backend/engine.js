@@ -408,11 +408,7 @@ function hasBarsForRange(dataObj, minStartDate, targetEndDate) {
     if (bars && Array.isArray(bars) && bars.length > 0) {
       const firstBarDate = bars[0].date;
       const lastBarDate = bars[bars.length - 1].date;
-      // Allow up to 4 calendar days gap for weekends and official exchange holidays (e.g. Gandhi Jayanti + weekend)
-      const daysDiffEnd = targetEndDate
-        ? (new Date(targetEndDate) - new Date(lastBarDate)) / (1000 * 60 * 60 * 24)
-        : 0;
-      const coversEnd = !targetEndDate || lastBarDate >= targetEndDate || (daysDiffEnd >= 0 && daysDiffEnd <= 4);
+      const coversEnd = !targetEndDate || lastBarDate >= targetEndDate;
       const coversStart = !minStartDate || firstBarDate <= minStartDate;
       if (coversEnd && coversStart) return true;
     }

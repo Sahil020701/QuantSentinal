@@ -91,15 +91,6 @@ function getLatestTradingDateIST() {
   }
 
   let computedDate = toDateStr(d);
-
-  // Cross-verify with engine benchmark calendar if live cache is loaded
-  if (typeof getLatestCompletedMarketDate === 'function') {
-    const verifiedDate = getLatestCompletedMarketDate(computedDate);
-    if (verifiedDate && verifiedDate <= computedDate) {
-      computedDate = verifiedDate;
-    }
-  }
-
   return computedDate;
 }
 
