@@ -189,7 +189,7 @@ async function saveState(state, portfolioType) {
   }
 }
 
-// Initialize clean live forward portfolio with ₹1,00,000 cash starting today
+// Initialize clean live forward portfolio with ₹50,000 cash starting today
 async function initLivePortfolio() {
   const latestDate = getLatestCompletedMarketDate() || formatUTCDate(new Date());
   let activeConfig = INITIAL_STATE.config;
@@ -202,24 +202,24 @@ async function initLivePortfolio() {
     portfolioType: 'live',
     config: activeConfig,
     lastSimulationDate: latestDate,
-    cash: 100000.0,
+    cash: 50000.0,
     holdings: [],
     history: [],
     valuationHistory: [
       {
         date: latestDate,
-        cash: 100000.0,
+        cash: 50000.0,
         holdingsValue: 0.0,
-        totalValue: 100000.0,
+        totalValue: 50000.0,
         profitPercent: 0.0,
-        totalDeposited: 100000.0
+        totalDeposited: 50000.0
       }
     ],
     logs: [
       {
         date: latestDate,
         sentiment: 'NEUTRAL',
-        text: `Quant Sentinal Live Trading Desk online (${activeConfig.aggressiveness === 'conservative' ? 'Conservative Approach' : 'Aggressive Approach'}). Clean starting capital of ₹1,00,000.00 deposited today (${latestDate}). Ready for forward order placement, live stop-loss tracking, and broker sync.`
+        text: `Quant Sentinal Live Trading Desk online (${activeConfig.aggressiveness === 'conservative' ? 'Conservative Approach' : 'Aggressive Approach'}). Clean starting capital of ₹50,000.00 deposited today (${latestDate}). Ready for forward order placement, live stop-loss tracking, and broker sync.`
       }
     ]
   };

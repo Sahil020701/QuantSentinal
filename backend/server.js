@@ -187,9 +187,9 @@ app.post('/api/reset', async (req, res) => {
           error: "Backtesting using past dates is not permitted on the Live Portfolio. Use Backtest mode for historical simulations."
         });
       }
-      console.log("Resetting Live Portfolio to fresh ₹1,00,000 baseline today...");
+      console.log("Resetting Live Portfolio to fresh ₹50,000 baseline today...");
       const state = await initLivePortfolio();
-      return res.json({ message: "Live Portfolio reset successfully with clean ₹1,00,000 slate.", state });
+      return res.json({ message: "Live Portfolio reset successfully with clean ₹50,000 slate.", state });
     }
 
     const minHistoryDateStr = '2019-01-01';

@@ -498,7 +498,7 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
             <h2>Active Holdings</h2>
             <span className={`status-badge ${portfolioMode === 'live' ? 'live' : 'closed'}`} style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem' }}>
               <span className="status-dot" />
-              <span>{portfolioMode === 'live' ? 'Live Trading Portfolio (₹1,00,000)' : 'Backtest Simulation'}</span>
+              <span>{portfolioMode === 'live' ? 'Live Trading Portfolio (₹50,000)' : 'Backtest Simulation'}</span>
             </span>
           </div>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
@@ -510,7 +510,7 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
           <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
             <p style={{ margin: '0 0 0.5rem', fontWeight: '600', color: 'var(--text-primary)' }}>
               {portfolioMode === 'live'
-                ? 'Your Live Portfolio is ready with ₹1,00,000 liquid capital.'
+                ? 'Your Live Portfolio is ready with ₹50,000 liquid capital.'
                 : 'No active stock holdings in this backtest period.'}
             </p>
             <p style={{ margin: '0', fontSize: '0.85rem' }}>

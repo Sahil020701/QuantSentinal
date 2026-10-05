@@ -150,7 +150,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
 
   const handleResetCustomDate = async (targetDate = selectedStartDate, replay = autoReplay) => {
     if (portfolioMode === 'live') {
-      const confirmMessage = "Are you sure you want to reset the Live Portfolio to a fresh ₹1,00,000 cash slate starting today?\n\nAll current live holdings, open orders, and trade history will be cleared.";
+      const confirmMessage = "Are you sure you want to reset the Live Portfolio to a fresh ₹50,000 cash slate starting today?\n\nAll current live holdings, open orders, and trade history will be cleared.";
       if (!window.confirm(confirmMessage)) return;
 
       setResetting(true);
@@ -168,7 +168,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Reset failed");
         onReset(data.state);
-        setMessage("Live Portfolio successfully reset to clean ₹1,00,000 slate starting today.");
+        setMessage("Live Portfolio successfully reset to clean ₹50,000 slate starting today.");
       } catch (err) {
         console.error(err);
         setMessage(`Error: ${err.message}`);
@@ -220,7 +220,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
             Configuring Active Portfolio
           </span>
           <h3 style={{ margin: '0.2rem 0 0', fontSize: '1.1rem', fontWeight: '700' }}>
-            {portfolioMode === 'live' ? 'Live Forward Trading Desk (₹1,00,000 Starting Slate)' : 'Backtesting Simulation Portfolio'}
+            {portfolioMode === 'live' ? 'Live Forward Trading Desk (₹50,000 Starting Slate)' : 'Backtesting Simulation Portfolio'}
           </h3>
         </div>
         <span className={`status-badge ${portfolioMode === 'live' ? 'live' : 'closed'}`} style={{ padding: '0.35rem 0.8rem' }}>
@@ -583,7 +583,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
                     </div>
 
                     <div className="config-desc" style={{ marginTop: '-0.25rem' }}>
-                      Reinitializes the Live Trading Desk to a clean ₹1,00,000 cash balance starting today. Backtesting using past dates is disabled on the Live Desk to protect live execution records. To run historical simulations, switch to the Backtest Simulation tab.
+                      Reinitializes the Live Trading Desk to a clean ₹50,000 cash balance starting today. Backtesting using past dates is disabled on the Live Desk to protect live execution records. To run historical simulations, switch to the Backtest Simulation tab.
                     </div>
 
                     <button
@@ -592,7 +592,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
                       style={{ width: '100%', marginTop: '0.35rem', fontWeight: '600' }}
                       disabled={resetting || running}
                     >
-                      {resetting ? "Resetting Live Desk..." : "Reset Live Desk to Today (Clean Slate ₹1,00,000)"}
+                      {resetting ? "Resetting Live Desk..." : "Reset Live Desk to Today (Clean Slate ₹50,000)"}
                     </button>
 
                     <div className="config-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>

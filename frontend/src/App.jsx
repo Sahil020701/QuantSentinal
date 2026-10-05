@@ -125,7 +125,7 @@ export default function App() {
             <h1>Quant Sentinal Trading Desk</h1>
             <p>
               {portfolioMode === 'live'
-                ? 'Forward Live Trading Desk (₹1,00,000 Capital Baseline)'
+                ? 'Forward Live Trading Desk (₹50,000 Capital Baseline)'
                 : 'Historical Algorithmic Backtesting Simulator'}
             </p>
           </div>
@@ -137,12 +137,12 @@ export default function App() {
             type="button"
             className={`portfolio-toggle-btn ${portfolioMode === 'live' ? 'active-live' : ''}`}
             onClick={() => handleSwitchMode('live')}
-            title="Live Trading Portfolio with ₹1,00,000 Starting Baseline"
+            title="Live Trading Portfolio with ₹50,000 Starting Baseline"
           >
             <span className="mode-indicator live-dot" />
             <div className="mode-text-group">
               <span className="mode-title">Live Portfolio</span>
-              <span className="mode-sub">₹1,00,000 Live Desk</span>
+              <span className="mode-sub">₹50,000 Live Desk</span>
             </div>
           </button>
           <button

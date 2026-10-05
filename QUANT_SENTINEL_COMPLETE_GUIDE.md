@@ -46,7 +46,7 @@ Instead of relying on tips, news headlines, television anchors, or human emotion
 - **Two Strategy Modes**: **Conservative** (strict institutional breakouts, roughly 40 trades per year) and **Aggressive** (broad high-frequency momentum, roughly 160-170 trades per year). See [Section 9](#9-strategy-modes-conservative-vs-aggressive).
 - **Asymmetric Risk/Reward**: Every trade starts with a **-4.8% hard stop-loss** and a **+25.0% profit reference target**, a planned ratio of about 5.2 to 1.
 - **Dynamic Protection**: A multi-step trailing ladder moves the stop above entry as a trade works (+1.2% at +3% peak, +5.5% at +11%, +11.5% at +18%). Beyond +25% there is no fixed cap: the stop trails the 20 EMA so big winners can run.
-- **Two Isolated Portfolios**: A **Backtesting** portfolio for historical simulation and a **Live Portfolio** that starts with ₹1,00,000 and tracks your real trades. A header toggle switches between them. See [Section 11](#11-dual-portfolios-backtesting-vs-live-desk).
+- **Two Isolated Portfolios**: A **Backtesting** portfolio for historical simulation and a **Live Portfolio** that starts with ₹50,000 and tracks your real trades. A header toggle switches between them. See [Section 11](#11-dual-portfolios-backtesting-vs-live-desk).
 
 ```mermaid
 flowchart LR
@@ -605,9 +605,9 @@ The system keeps two completely separate portfolios in MongoDB. A toggle in the 
 | :--- | :--- | :--- |
 | **DB key** | `simulation_state` | `live_portfolio_state` |
 | **Purpose** | Replay the strategy over history (from 2019 up to today) | Track real money you invest from today |
-| **Starting capital** | ₹1,00,000 on the chosen start date | ₹1,00,000 added on the day it was created |
+| **Starting capital** | ₹1,00,000 on the chosen start date | ₹50,000 added on the day it was created |
 | **How trades happen** | The engine simulates every trading day automatically | **You** place orders at your broker and log them with Add to Live Portfolio |
-| **Reset** | Pick a start date and replay | Resets to a clean ₹1,00,000 slate |
+| **Reset** | Pick a start date and replay | Resets to a clean ₹50,000 slate |
 
 > [!WARNING]
 > The automatic daily scheduler only advances the **Backtesting** portfolio. The Live Portfolio does **not** yet update prices or trail stop-losses by itself. Live holdings use the stop-loss you set at entry. Update the stop manually at your broker as the trade matures, using the Trade Plan ladder as your guide. Avoid **Run Daily Catch-up** while Live is selected: it runs the automated simulation, which would place simulated trades in your real-money tracker.
@@ -700,7 +700,7 @@ The backend reads `MONGODB_URI` from `backend/.env` (it falls back to a local Mo
 - **Peak Gain**: The highest price a trade has reached since entry, measured on the daily high. It drives the trailing ladder.
 - **Runner**: A trade past +25% peak gain whose stop trails the 20 EMA with no fixed exit.
 - **Market Regime**: BULLISH, NEUTRAL or RISK_OFF classification of the Nifty 50, used to tighten or loosen entries.
-- **Live Portfolio**: The forward ₹1,00,000 portfolio that tracks your real trades, separate from the backtest.
+- **Live Portfolio**: The forward ₹50,000 portfolio that tracks your real trades, separate from the backtest.
 
 - **Benchmark Index**: A broad basket of premier stocks representing the overall health of the country's economy (e.g. **Nifty 50** in India, representing the 50 largest companies).
 - **Stage 2 Uptrend**: A sustained period of months where a stock consistently makes higher highs and higher lows, guided above its 20 and 50 EMAs.
