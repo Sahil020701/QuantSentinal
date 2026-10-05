@@ -281,7 +281,7 @@ app.post('/api/deposit', async (req, res) => {
     state.cash += Number(amount);
 
     const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
-    const currentDeposits = lastVal ? lastVal.totalDeposited : 100000.0;
+    const currentDeposits = lastVal ? lastVal.totalDeposited : (pType === 'live' ? 50000.0 : 100000.0);
     const newDeposits = currentDeposits + Number(amount);
 
     if (lastVal) {
