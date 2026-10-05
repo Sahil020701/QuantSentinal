@@ -15,6 +15,7 @@ export default function App() {
     return localStorage.getItem('qs_portfolio_mode') || 'live';
   });
   const [portfolio, setPortfolio] = useState(null);
+  const [portfolioCache, setPortfolioCache] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -23,17 +24,27 @@ export default function App() {
     fetchPortfolio(portfolioMode);
   }, []);
 
+  const updatePortfolioState = (mode, data) => {
+    setPortfolio(data);
+    setPortfolioCache(prev => ({ ...prev, [mode]: data }));
+  };
+
   const fetchPortfolio = async (mode = portfolioMode) => {
-    setLoading(true);
+    // Only show full-screen spinner if we do not have cached data for this mode yet
+    if (!portfolioCache[mode] && !portfolio) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const res = await fetch(`${API_URL}/api/portfolio?mode=${mode}`);
       if (!res.ok) throw new Error("Failed to load portfolio statistics");
       const data = await res.json();
-      setPortfolio(data);
+      updatePortfolioState(mode, data);
     } catch (err) {
       console.error(err);
-      setError("Could not establish connection to the Quant Sentinal Trading Server. Please verify the backend is running on port 5001.");
+      if (!portfolioCache[mode] && !portfolio) {
+        setError("Could not establish connection to the Quant Sentinal Trading Server. Please verify the backend is running on port 5001.");
+      }
     } finally {
       setLoading(false);
     }
@@ -43,6 +54,9 @@ export default function App() {
     if (newMode === portfolioMode) return;
     setPortfolioMode(newMode);
     localStorage.setItem('qs_portfolio_mode', newMode);
+    if (portfolioCache[newMode]) {
+      setPortfolio(portfolioCache[newMode]);
+    }
     fetchPortfolio(newMode);
   };
 
@@ -223,17 +237,21 @@ export default function App() {
             portfolio={portfolio}
             portfolioMode={portfolioMode}
             onConfigUpdate={(newConfig) => {
-              setPortfolio(prev => ({ ...prev, config: newConfig }));
+              setPortfolio(prev => {
+                const updated = { ...prev, config: newConfig };
+                setPortfolioCache(c => ({ ...c, [portfolioMode]: updated }));
+                return updated;
+              });
             }}
             onReset={(newState) => {
-              setPortfolio(newState);
+              updatePortfolioState(portfolioMode, newState);
               setActiveTab('dashboard');
             }}
             onDeposit={(newState) => {
-              setPortfolio(newState);
+              updatePortfolioState(portfolioMode, newState);
             }}
             onTriggerRun={(newState) => {
-              setPortfolio(newState);
+              updatePortfolioState(portfolioMode, newState);
             }}
           />
         )}

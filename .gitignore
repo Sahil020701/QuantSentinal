@@ -7,3 +7,5 @@ backend/data/*
 !backend/data/watchlist_fallback.json
 backend/state*.json
 PROJECT_EXPLAINED.md
+backend/analyze_trades.js
+backend/compare_signals.js

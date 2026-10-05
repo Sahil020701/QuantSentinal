@@ -208,7 +208,7 @@ async function initLivePortfolio() {
 }
 
 // Reset state
-async function resetSimulation(customStartDate, portfolioType = 'backtest') {
+async function resetSimulation(customStartDate, portfolioType = 'backtest', saveToDb = true) {
   if (portfolioType === 'live') {
     return await initLivePortfolio();
   }
@@ -252,7 +252,10 @@ async function resetSimulation(customStartDate, portfolioType = 'backtest') {
       }
     ]
   };
-  await saveState(state, 'backtest');
+  inMemoryState = state;
+  if (saveToDb) {
+    await saveState(state, 'backtest');
+  }
   return state;
 }
 
@@ -2326,9 +2329,9 @@ async function reEvaluateHoldings(portfolioType = 'backtest') {
 }
 
 // Deploy available cash into candidate setups immediately on current simulation date
-async function deployIdleCash(simDate, portfolioType = 'backtest') {
+async function deployIdleCash(simDate, portfolioType = 'backtest', existingState = null) {
   const pType = portfolioType || 'backtest';
-  const state = await loadState(pType);
+  const state = existingState || await loadState(pType);
   const targetDate = simDate || state.lastSimulationDate;
   const cachedData = await updateCache(targetDate);
 

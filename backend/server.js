@@ -183,12 +183,15 @@ app.post('/api/reset', async (req, res) => {
     const targetStartDate = rawStartDate < minHistoryDateStr ? minHistoryDateStr : rawStartDate;
 
     console.log(`Resetting backtest baseline to ${targetStartDate} (replay=${replay})...`);
-    let state = await resetSimulation(targetStartDate, 'backtest');
+    // If replaying forward to today, initialize baseline in memory without prematurely wiping MongoDB
+    const shouldSaveImmediately = !replay || targetStartDate >= todayStr;
+    let state = await resetSimulation(targetStartDate, 'backtest', shouldSaveImmediately);
 
     if (replay && targetStartDate < todayStr) {
       console.log(`Auto-replaying backtest from ${targetStartDate} to ${todayStr}...`);
       state = await runSimulation(todayStr, false, 'backtest');
-      state = await deployIdleCash(todayStr, 'backtest');
+      state = await deployIdleCash(todayStr, 'backtest', state);
+      await saveState(state, 'backtest');
     }
 
     res.json({ message: `Backtest simulation reset successful with start date ${targetStartDate}.`, state });
@@ -331,18 +334,14 @@ async function runAutomatedEngineCycle(forceRefresh = false) {
   isSchedulerRunning = true;
   try {
     const todayStr = getTodayUTCDateString();
-    let state = await loadState();
-    // Only run daily catchup if state is within 14 days of today (prevents locking up startup on multi-year baselines)
+    let state = await loadState('live');
+    // Ensure Live portfolio tracks forward automatically
     if (state.lastSimulationDate < todayStr) {
-      const diffDays = (new Date(todayStr) - new Date(state.lastSimulationDate)) / (1000 * 60 * 60 * 24);
-      if (diffDays <= 14) {
-        console.log(`[AUTOMATED SCHEDULER] Running daily engine catch-up for ${todayStr}...`);
-        state = await runSimulation(todayStr, forceRefresh);
-        state = await deployIdleCash(todayStr);
-        console.log(`[AUTOMATED SCHEDULER] Cycle complete. Last simulation date: ${state.lastSimulationDate}`);
-      } else {
-        console.log(`[AUTOMATED SCHEDULER] State baseline is historical (${state.lastSimulationDate}). Skipping blocking auto-catchup. Use Config Tab Reset to replay.`);
-      }
+      console.log(`[AUTOMATED SCHEDULER] Running daily engine catch-up for Live Portfolio for ${todayStr}...`);
+      state = await runSimulation(todayStr, forceRefresh, 'live');
+      state = await deployIdleCash(todayStr, 'live', state);
+      await saveState(state, 'live');
+      console.log(`[AUTOMATED SCHEDULER] Live cycle complete. Last simulation date: ${state.lastSimulationDate}`);
     }
   } catch (error) {
     console.error("[AUTOMATED SCHEDULER] Error during engine cycle execution:", error.message);
@@ -387,8 +386,9 @@ async function startServer() {
   app.listen(PORT, async () => {
     console.log(`Quant Sentinal Trading Backend listening on port ${PORT}`);
     try {
-      const state = await loadState();
-      console.log(`Database loaded. Simulation current date: ${state.lastSimulationDate}`);
+      const liveState = await loadState('live');
+      const backtestState = await loadState('backtest');
+      console.log(`Database loaded. Live Desk date: ${liveState.lastSimulationDate} | Backtest date: ${backtestState.lastSimulationDate}`);
       startTradingScheduler();
     } catch (err) {
       console.error("Failed to load initial state on boot:", err);

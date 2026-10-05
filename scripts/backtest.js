@@ -37,6 +37,9 @@ function parseArgs() {
     allocStandard: 0.125,        // 12.5% standard allocation
     allocGradeA: 0.150,          // 15.0% high conviction allocation
     mode: 'broad',               // 'broad' (high frequency ~190 trades) or 'strict' (matches Dashboard UI ~40 trades)
+    rotationEnabled: false,      // Disabled by default
+    rotationMinCandidateScore: 88,
+    rotationMaxUnderperformerProfit: 2.0,
     verbose: false,
     showTrades: 0,
     dataPath: null,
@@ -81,6 +84,11 @@ function parseArgs() {
       options.mode = 'strict';
     } else if (arg === '--broad' || arg === '--high-frequency') {
       options.mode = 'broad';
+    } else if (arg === '--rotation') {
+      const val = args[++i]?.toLowerCase();
+      options.rotationEnabled = val !== 'false' && val !== '0' && val !== 'no';
+    } else if (arg === '--no-rotation') {
+      options.rotationEnabled = false;
     }
   }
 
@@ -232,12 +240,6 @@ function scanCandidates(simDate, cachedData, currentHoldings, watchlist) {
     }
   }
 
-  const sectorCounts = {};
-  for (const h of currentHoldings) {
-    const sec = h.sector || 'Other';
-    sectorCounts[sec] = (sectorCounts[sec] || 0) + 1;
-  }
-
   for (const stock of watchlist) {
     if (stock.sector === 'ETFs') continue;
 
@@ -252,9 +254,6 @@ function scanCandidates(simDate, cachedData, currentHoldings, watchlist) {
       if (existingHolding.isAccumulated || (existingHolding.profitPercent || 0) < 6.0 || daysHeld < 3) continue;
       isAccumulationCandidate = true;
     }
-
-    const maxPerSector = 2;
-    if (!isAccumulationCandidate && stock.sector !== 'ETFs' && (sectorCounts[stock.sector] || 0) >= maxPerSector) continue;
 
     const stockHistory = cachedData[stock.symbol];
     if (!stockHistory || stockHistory.length === 0) continue;
@@ -618,8 +617,56 @@ function executeBacktest(options, cachedData, watchlist) {
       : 99;
 
     for (const c of candidates.filter(x => !x.isAccumulation)) {
-      if (state.holdings.length >= options.maxPositions) break;
       if (newBuysToday >= maxBuysToday) break;
+
+      const isFull = state.holdings.length >= options.maxPositions;
+      const lowCash = state.cash < 4000;
+
+      if ((isFull || lowCash) && options.rotationEnabled && c.score >= (options.rotationMinCandidateScore || 88) && state.holdings.length > 0) {
+        let worstHoldingIndex = -1;
+        let worstHoldingProfit = Infinity;
+
+        for (let j = 0; j < state.holdings.length; j++) {
+          const h = state.holdings[j];
+          if (h.buyDate === simDate) continue;
+          if (h.profitPercent < worstHoldingProfit) {
+            worstHoldingProfit = h.profitPercent;
+            worstHoldingIndex = j;
+          }
+        }
+
+        if (worstHoldingIndex !== -1 && worstHoldingProfit <= (options.rotationMaxUnderperformerProfit ?? 2.0)) {
+          const position = state.holdings[worstHoldingIndex];
+          const stockData = cachedData[position.symbol];
+          const dayBar = stockData ? stockData.find(row => row.date === simDate) : null;
+          const sellPrice = dayBar ? dayBar.close : position.currentPrice;
+          const revenue = position.quantity * sellPrice;
+
+          if (state.cash + revenue >= c.price) {
+            const cost = position.quantity * position.buyPrice;
+            const profit = revenue - cost;
+            const profitPercent = (profit / cost) * 100;
+            state.cash += revenue;
+
+            state.history.push({
+              symbol: position.symbol,
+              name: position.name,
+              sector: position.sector,
+              quantity: position.quantity,
+              buyPrice: position.buyPrice,
+              sellPrice,
+              buyDate: position.buyDate,
+              sellDate: simDate,
+              profit,
+              profitPercent,
+              reason: `Replaced by ${c.symbol} (Score: ${c.score.toFixed(1)})`
+            });
+            state.holdings.splice(worstHoldingIndex, 1);
+          }
+        }
+      }
+
+      if (state.holdings.length >= options.maxPositions) break;
       if (state.cash < 4000) break;
       const ok = executeBuy(c);
       if (ok) newBuysToday++;
