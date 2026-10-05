@@ -114,12 +114,19 @@ function getDbKey(portfolioType) {
 async function loadState(portfolioType = 'backtest') {
   const isLive = (portfolioType === 'live');
   const key = getDbKey(portfolioType);
+  const memState = isLive ? inMemoryLiveState : inMemoryState;
 
   if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) {
     try {
       let doc = await StateModel.findOne({ key }).lean();
       if (doc) {
         doc.portfolioType = isLive ? 'live' : 'backtest';
+        // If in-memory state has more valuation history points (e.g. freshly replayed), preserve it and sync
+        if (memState && memState.valuationHistory && doc.valuationHistory && memState.valuationHistory.length > doc.valuationHistory.length) {
+          console.log(`[loadState] In-memory state for ${key} has ${memState.valuationHistory.length} valuations vs MongoDB's ${doc.valuationHistory.length}. Preserving and syncing fresher state.`);
+          await saveState(memState, portfolioType);
+          return memState;
+        }
         if (isLive) inMemoryLiveState = doc;
         else inMemoryState = doc;
         return doc;
@@ -152,20 +159,33 @@ async function saveState(state, portfolioType) {
   if (isLive) inMemoryLiveState = { ...state };
   else inMemoryState = { ...state };
 
+  const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/quant_sentinal';
+  if (mongoose.connection.readyState !== 1 && mongoose.connection.readyState !== 2) {
+    try {
+      console.log(`[saveState] Mongoose connection not ready (readyState=${mongoose.connection.readyState}). Reconnecting to MongoDB...`);
+      await mongoose.connect(mongoUri);
+    } catch (connErr) {
+      console.warn(`[saveState] MongoDB Reconnection attempt failed: ${connErr.message}`);
+    }
+  }
+
   if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) {
     try {
       const stateData = { ...state };
       delete stateData._id;
       delete stateData.key;
 
-      await StateModel.findOneAndUpdate(
+      const res = await StateModel.findOneAndUpdate(
         { key },
         { $set: stateData },
         { upsert: true, returnDocument: 'after' }
       );
+      console.log(`[saveState] Successfully persisted ${key} to MongoDB. Updated date: ${res.lastSimulationDate}, valuations count: ${res.valuationHistory?.length}`);
     } catch (e) {
-      console.error(`Error saving ${key} to MongoDB:`, e.message);
+      console.error(`[saveState] Error saving ${key} to MongoDB:`, e.message);
     }
+  } else {
+    console.warn(`[saveState] Mongoose not connected (readyState=${mongoose.connection.readyState}), saved to memory only.`);
   }
 }
 
@@ -977,9 +997,9 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
 }
 
 // Core Simulation Function
-async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioType = 'backtest') {
+async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioType = 'backtest', existingState = null) {
   const pType = portfolioType || 'backtest';
-  const state = await loadState(pType);
+  const state = existingState || await loadState(pType);
 
   // Live Portfolio Guardrail: strictly forbid running backward historical simulations
   if (pType === 'live' && targetEndDateStr < state.lastSimulationDate) {
@@ -1022,7 +1042,13 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
   let lastDepositMonthKey = state.lastSimulationDate ? state.lastSimulationDate.slice(0, 7) : null;
 
   // We loop day-by-day through the new trading dates
+  let dayIdx = 0;
   for (const simDate of tradingDates) {
+    dayIdx++;
+    if (dayIdx % 10 === 0) {
+      // Yield to event loop to keep socket heartbeats and MongoDB connections alive
+      await new Promise(resolve => setImmediate(resolve));
+    }
     const todayTransactions = [];
 
     // --- 1. Monthly Deposit Check (Disabled: playing with 1L fixed starting capital) ---

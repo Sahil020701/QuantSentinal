@@ -198,13 +198,11 @@ app.post('/api/reset', async (req, res) => {
     const targetStartDate = rawStartDate < minHistoryDateStr ? minHistoryDateStr : rawStartDate;
 
     console.log(`Resetting backtest baseline to ${targetStartDate} (replay=${replay})...`);
-    // If replaying forward to today, initialize baseline in memory without prematurely wiping MongoDB
-    const shouldSaveImmediately = !replay || targetStartDate >= todayStr;
-    let state = await resetSimulation(targetStartDate, 'backtest', shouldSaveImmediately);
+    let state = await resetSimulation(targetStartDate, 'backtest', true);
 
     if (replay && targetStartDate < todayStr) {
       console.log(`Auto-replaying backtest from ${targetStartDate} to ${todayStr}...`);
-      state = await runSimulation(todayStr, false, 'backtest');
+      state = await runSimulation(todayStr, false, 'backtest', state);
       state = await deployIdleCash(todayStr, 'backtest', state);
       await saveState(state, 'backtest');
     }

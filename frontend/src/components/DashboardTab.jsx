@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import MiniChart from './MiniChart';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
@@ -97,13 +97,15 @@ function filterByRange(history, range) {
   if (!history || history.length === 0) return history;
   if (!range || (range.days === null && !range.ytd)) return history; // ALL / Since Inception
 
-  const now = new Date();
+  // Anchor cutoff from the latest data point in history rather than browser wall-clock time
+  const lastDateStr = history[history.length - 1]?.date;
+  const baseDate = lastDateStr ? new Date(lastDateStr) : new Date();
   let cutoff;
 
   if (range.ytd) {
-    cutoff = new Date(now.getFullYear(), 0, 1); // Jan 1 of current year
+    cutoff = new Date(baseDate.getFullYear(), 0, 1); // Jan 1 of simulation year
   } else {
-    cutoff = new Date(now);
+    cutoff = new Date(baseDate);
     cutoff.setDate(cutoff.getDate() - range.days);
   }
 
@@ -119,11 +121,18 @@ function filterByRange(history, range) {
 export default function DashboardTab({ portfolio, portfolioMode = 'live', onPortfolioRefresh }) {
   const { cash, holdings, valuationHistory } = portfolio;
   const [activeRange, setActiveRange] = useState(() => {
-    if (portfolio?.valuationHistory && portfolio.valuationHistory.length > 300) {
+    if (portfolioMode === 'backtest' || (portfolio?.valuationHistory && portfolio.valuationHistory.length > 260)) {
       return 'ALL';
     }
     return '1Y';
   });
+
+  // Automatically adapt range to ALL when multi-year backtest data is loaded or mode switches to backtest
+  useEffect(() => {
+    if (portfolioMode === 'backtest') {
+      setActiveRange('ALL');
+    }
+  }, [portfolioMode, valuationHistory?.length]);
   const [chartMode, setChartMode] = useState('total'); // 'total' | 'invested'
   const [inspectHolding, setInspectHolding] = useState(null);
   const [closingHolding, setClosingHolding] = useState(false);
