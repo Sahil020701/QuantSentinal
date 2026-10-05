@@ -50,6 +50,7 @@ export default function AlgoTop25Tab({ portfolioMode = 'live', onTradeExecuted }
       if (typeof onTradeExecuted === 'function') {
         onTradeExecuted();
       }
+      fetchTop25();
     } catch (err) {
       console.error(err);
       setExecutionFeedback({
@@ -85,13 +86,13 @@ GTT Setup: Place OCO GTT on Zerodha/Groww before 09:15 AM IST`;
 
   useEffect(() => {
     fetchTop25();
-  }, []);
+  }, [portfolioMode]);
 
   const fetchTop25 = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/algo-top25?limit=all`);
+      const res = await fetch(`${API_URL}/api/algo-top25?limit=all&mode=${portfolioMode}`);
       if (!res.ok) throw new Error("Failed to load algorithm rankings");
       const json = await res.json();
       setData(json);

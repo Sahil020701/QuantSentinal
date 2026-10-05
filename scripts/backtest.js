@@ -26,10 +26,16 @@ const engine = require('../backend/engine');
 // Parse Command Line Arguments
 function parseArgs() {
   const args = process.argv.slice(2);
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const getPastStr = (days) => toDateStr(new Date(now.getTime() - days * 24 * 60 * 60 * 1000));
+  const todayStr = toDateStr(now);
+
   const options = {
     period: null,
     startDate: null,
-    endDate: '2026-10-01',
+    endDate: todayStr,
     capital: 100000.0,
     maxPositions: 10,
     stopLossPercent: 0.048,      // 4.8%
@@ -95,23 +101,23 @@ function parseArgs() {
   // Handle preset period shortcuts
   if (options.period) {
     if (options.period === '1y' || options.period === '1') {
-      options.startDate = '2025-10-01';
+      options.startDate = getPastStr(365);
     } else if (options.period === '2y' || options.period === '2') {
-      options.startDate = '2024-10-01';
+      options.startDate = getPastStr(730);
     } else if (options.period === '3y' || options.period === '3') {
-      options.startDate = '2023-10-01';
+      options.startDate = getPastStr(1095);
     } else if (options.period === '5y' || options.period === '5') {
-      options.startDate = '2021-10-01';
+      options.startDate = getPastStr(1826);
     } else if (options.period === '7y' || options.period === '2019' || options.period === 'max') {
       options.startDate = '2019-01-01';
     } else if (options.period === 'ytd') {
-      options.startDate = '2026-01-01';
+      options.startDate = `${now.getFullYear()}-01-01`;
     }
   }
 
-  // Default to 3Y if no start date or period specified
+  // Default to 1Y if no start date or period specified
   if (!options.startDate) {
-    options.startDate = '2023-10-01';
+    options.startDate = getPastStr(365);
   }
 
   return options;
@@ -169,8 +175,7 @@ function loadMarketData(customPath) {
   const candidatePaths = [
     customPath,
     path.join(__dirname, '../backend/data/market_data_5y.json'),
-    path.join(__dirname, '../../scratch/market_data_5y.json'),
-    '/Users/sahilgobade/.gemini/antigravity-ide/brain/0ef74a54-6c19-4245-a925-6fe592edd74f/scratch/market_data_5y.json'
+    path.join(__dirname, '../data/market_data_5y.json')
   ].filter(Boolean);
 
   for (const p of candidatePaths) {
@@ -195,9 +200,18 @@ function loadWatchlist() {
   return [];
 }
 
+// Dynamic benchmark selector: picks the benchmark series with the latest available bar
+function getBenchmarkSeries(cachedData) {
+  if (!cachedData) return null;
+  const candidates = [cachedData['NIFTYBEES.NS'], cachedData['^NSEI'], cachedData['RELIANCE.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b[b.length - 1].date.localeCompare(a[a.length - 1].date));
+  return candidates[0];
+}
+
 // Evaluate Market Regime for Benchmark
 function evaluateMarketRegime(simDate, cachedData) {
-  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  const benchmarkData = getBenchmarkSeries(cachedData);
   if (!benchmarkData || benchmarkData.length < 50) return { regime: 'BULLISH', benchmarkRsi: 55, trend: 'UP', return5d: 0.01 };
 
   const bIdx = benchmarkData.findIndex(row => row.date === simDate);
@@ -229,7 +243,7 @@ function scanCandidates(simDate, cachedData, currentHoldings, watchlist) {
   const marketRegime = evaluateMarketRegime(simDate, cachedData);
   const candidates = [];
 
-  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  const benchmarkData = getBenchmarkSeries(cachedData);
   let benchmarkReturn20d = 0;
   if (benchmarkData && benchmarkData.length > 0) {
     const bIdx = benchmarkData.findIndex(row => row.date === simDate);
@@ -342,7 +356,7 @@ function scanCandidates(simDate, cachedData, currentHoldings, watchlist) {
 
 // Run Backtest Core Simulation
 function executeBacktest(options, cachedData, watchlist) {
-  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  const benchmarkData = getBenchmarkSeries(cachedData);
   const tradingDates = benchmarkData
     .map(r => r.date)
     .filter(d => d >= options.startDate && d <= options.endDate)

@@ -138,7 +138,8 @@ async function loadState(portfolioType = 'backtest') {
     return inMemoryState;
   }
 
-  return await resetSimulation('2025-10-01', 'backtest');
+  const defaultBacktestStart = formatUTCDate(new Date(Date.now() - 365 * 24 * 60 * 60 * 1000));
+  return await resetSimulation(defaultBacktestStart, 'backtest');
 }
 
 // Save state for specified portfolio
@@ -170,7 +171,7 @@ async function saveState(state, portfolioType) {
 
 // Initialize clean live forward portfolio with ₹1,00,000 cash starting today
 async function initLivePortfolio() {
-  const latestDate = getLatestCompletedMarketDate() || '2026-10-01';
+  const latestDate = getLatestCompletedMarketDate() || formatUTCDate(new Date());
   let activeConfig = INITIAL_STATE.config;
   if (inMemoryState && inMemoryState.config) {
     activeConfig = { ...INITIAL_STATE.config, ...inMemoryState.config };
@@ -213,7 +214,8 @@ async function resetSimulation(customStartDate, portfolioType = 'backtest', save
     return await initLivePortfolio();
   }
 
-  const startDate = customStartDate || '2025-10-01';
+  const defaultStart = formatUTCDate(new Date(Date.now() - 365 * 24 * 60 * 60 * 1000));
+  const startDate = customStartDate || defaultStart;
   let activeConfig = INITIAL_STATE.config;
   if (inMemoryState && inMemoryState.config) {
     activeConfig = { ...INITIAL_STATE.config, ...inMemoryState.config };
@@ -354,7 +356,7 @@ async function closeLiveTrade({ symbol, price, reason, date }) {
   state.cash += proceeds;
   state.holdings.splice(idx, 1);
 
-  state.history.unshift({
+  state.history.push({
     symbol: h.symbol,
     name: h.name,
     sector: h.sector,
@@ -416,12 +418,21 @@ function hasBarsForRange(dataObj, minStartDate, targetEndDate) {
   return false;
 }
 
+// Helper to select the benchmark series that has the latest available market bar
+function getBenchmarkSeries(dataObj) {
+  if (!dataObj || typeof dataObj !== 'object') return null;
+  const candidates = [dataObj['NIFTYBEES.NS'], dataObj['^NSEI'], dataObj['RELIANCE.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b[b.length - 1].date.localeCompare(a[a.length - 1].date));
+  return candidates[0];
+}
+
 // Return the latest completed trading session date in market data <= candidateDate
 function getLatestCompletedMarketDate(candidateDate) {
   const data = inMemoryMarketData?.data;
-  if (!data) return candidateDate;
-  const bench = data['^NSEI'] || data['NIFTYBEES.NS'] || data['RELIANCE.NS'];
-  if (!bench || bench.length === 0) return candidateDate;
+  if (!data) return candidateDate || formatUTCDate(new Date());
+  const bench = getBenchmarkSeries(data);
+  if (!bench || bench.length === 0) return candidateDate || formatUTCDate(new Date());
   if (!candidateDate) return bench[bench.length - 1].date;
   const filtered = bench.filter(b => b.date <= candidateDate);
   if (filtered.length > 0) {
@@ -496,10 +507,17 @@ async function updateCache(endDateStr, forceRefresh = false, minStartDateStr = n
   activeUpdatePromise = (async () => {
     console.log("Market data outdated or missing. Fetching live market data using Python yfinance script...");
 
-    // Dynamically calculate start date (450 days lookback = 1Y max backtest window + ~85 day buffer for 50+ bar indicator warmup)
+    // Dynamically calculate start date (at least 450 days lookback, or earlier if minStartDateStr requested)
     const endD = new Date(endDateStr);
-    const startD = new Date(endD.getTime() - (450 * 24 * 60 * 60 * 1000));
-    const startDateStr = formatUTCDate(startD);
+    let effectiveStartD = new Date(endD.getTime() - (450 * 24 * 60 * 60 * 1000));
+    if (minStartDateStr) {
+      const minD = new Date(minStartDateStr);
+      const requestedStartD = new Date(minD.getTime() - (85 * 24 * 60 * 60 * 1000)); // 85-day indicator warmup buffer
+      if (requestedStartD < effectiveStartD) {
+        effectiveStartD = requestedStartD;
+      }
+    }
+    const startDateStr = formatUTCDate(effectiveStartD);
     // Determine Python executable (prefer isolated backend venv if available)
     const venvUnix = path.join(__dirname, 'venv', 'bin', 'python3');
     const venvWin = path.join(__dirname, 'venv', 'Scripts', 'python.exe');
@@ -662,7 +680,7 @@ function generateNarrativeLog(date, sentiment, cash, holdings, totalValue, trans
  * Evaluate broad market regime based on benchmark ETF / index (e.g. NIFTYBEES.NS or RELIANCE.NS)
  */
 function evaluateMarketRegime(simDate, cachedData, isConservative = false) {
-  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  const benchmarkData = getBenchmarkSeries(cachedData);
   if (!benchmarkData || benchmarkData.length === 0) {
     return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT', return5d: 0 };
   }
@@ -717,7 +735,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
   const candidates = [];
 
   // Calculate benchmark 20-day return for Relative Strength filtering (NIFTY 50 index)
-  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  const benchmarkData = getBenchmarkSeries(cachedData);
   let benchmarkReturn20d = 0;
   if (benchmarkData && benchmarkData.length > 0) {
     const bIdx = benchmarkData.findIndex(row => row.date === simDate);
@@ -962,6 +980,12 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
 async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioType = 'backtest') {
   const pType = portfolioType || 'backtest';
   const state = await loadState(pType);
+
+  // Live Portfolio Guardrail: strictly forbid running backward historical simulations
+  if (pType === 'live' && targetEndDateStr < state.lastSimulationDate) {
+    throw new Error(`Cannot run historical simulations on the Live Portfolio (requested: ${targetEndDateStr}, current: ${state.lastSimulationDate}). Use Backtest mode for historical simulations.`);
+  }
+
   const cachedData = await updateCache(targetEndDateStr, forceRefresh, state.lastSimulationDate);
 
   const lastRunDateStr = state.lastSimulationDate;
@@ -971,7 +995,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
   }
 
   // Find all unique trading dates from True Benchmark Index (^NSEI / NIFTYBEES.NS), fallback to RELIANCE.NS
-  const calendarData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  const calendarData = getBenchmarkSeries(cachedData);
   if (!calendarData || calendarData.length === 0) {
     throw new Error("Failed to load historical data for calendar baseline.");
   }
@@ -1394,13 +1418,14 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
 
         // Cool-off protection: If stopped out within last 8 trading days, do not immediately re-enter unless RVOL >= 2.0
         if (!isAccumulation) {
-          const simIdx = tradingDates.indexOf(simDate);
+          const allCalendarDates = calendarData.map(r => r.date);
+          const simIdx = allCalendarDates.indexOf(simDate);
           const recentLoss = state.history.some(t => {
             if (t.symbol !== targetStock.symbol || t.profit > 0) return false;
-            const sellIdx = tradingDates.indexOf(t.sellDate);
+            const sellIdx = allCalendarDates.indexOf(t.sellDate);
             if (sellIdx === -1) return false;
             const daysSinceLoss = simIdx - sellIdx;
-            if (daysSinceLoss <= 8) {
+            if (daysSinceLoss >= 0 && daysSinceLoss <= 8) {
               if ((targetStock.technicalStats?.rvol || 1) >= 2.0) return false;
               return true;
             }
@@ -1654,8 +1679,10 @@ async function getWatchlistQuotes(endDateStr) {
   const result = [];
 
   for (const stock of WATCHLIST) {
-    const history = cachedData[stock.symbol];
-    if (history && history.length >= 2) {
+    const fullHistory = cachedData[stock.symbol];
+    if (fullHistory && fullHistory.length >= 2) {
+      const history = endDateStr ? fullHistory.filter(r => r.date <= endDateStr) : fullHistory;
+      if (history.length < 2) continue;
       const todayBar = history[history.length - 1];
       const yesterdayBar = history[history.length - 2];
 
@@ -1742,12 +1769,13 @@ async function getWatchlistQuotes(endDateStr) {
 
 // Scan and rank entire stock universe using algorithmic multi-factor criteria.
 // Returns Top 25 stocks along with each indicator and pass/fail boolean status.
-async function getTop25AlgoRankings(simDate, forceRefresh = false) {
+async function getTop25AlgoRankings(simDate, forceRefresh = false, portfolioType = 'live') {
+  const pType = (portfolioType === 'backtest') ? 'backtest' : 'live';
   let state;
   try {
-    state = await loadState();
+    state = await loadState(pType);
   } catch (_) {
-    state = { holdings: [], config: { maxPositions: 12 } };
+    state = { holdings: [], config: { maxPositions: 10 } };
   }
 
   let targetDate = simDate;
@@ -1756,7 +1784,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
   }
 
   const cachedData = await updateCache(targetDate, forceRefresh);
-  const benchmarkData = cachedData['^NSEI'] || cachedData['NIFTYBEES.NS'] || cachedData['RELIANCE.NS'];
+  const benchmarkData = getBenchmarkSeries(cachedData);
 
   // Auto-fallback: If targetDate has no session bar in benchmark data (e.g. exchange holiday or weekend),
   // automatically step back to the true latest completed market session bar.
@@ -2164,6 +2192,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false) {
 
   return {
     date: targetDate,
+    portfolioMode: pType,
     marketRegime: marketRegime.regime,
     strategyApproach: isConservative ? 'conservative' : 'aggressive',
     strategyTitle: isConservative ? 'Conservative (Institutional ~40-41 Trades/Yr)' : 'Aggressive (Broad Momentum ~172 Trades/Yr)',
@@ -2318,6 +2347,19 @@ async function reEvaluateHoldings(portfolioType = 'backtest') {
   }
 
   state.holdings = remainingHoldings;
+
+  // Refresh latest valuation entry if any positions were closed
+  if (closedTrades.length > 0 && state.valuationHistory && state.valuationHistory.length > 0) {
+    const lastVal = state.valuationHistory[state.valuationHistory.length - 1];
+    let newHoldingsVal = 0;
+    for (const h of remainingHoldings) newHoldingsVal += (h.value || (h.quantity * (h.currentPrice || h.buyPrice)));
+    lastVal.cash = state.cash;
+    lastVal.holdingsValue = newHoldingsVal;
+    lastVal.totalValue = state.cash + newHoldingsVal;
+    const dep = lastVal.totalDeposited || 100000.0;
+    lastVal.profitPercent = ((lastVal.totalValue - dep) / dep) * 100;
+  }
+
   await saveState(state, pType);
 
   console.log(`[reEvaluate] Done. Closed ${closedTrades.length} position(s), ${remainingHoldings.length} still open.`);
@@ -2347,13 +2389,28 @@ async function deployIdleCash(simDate, portfolioType = 'backtest', existingState
 
     const isAccumulation = targetStock.isAccumulation;
 
-    if (marketRegime && marketRegime.regime === 'RISK_OFF') {
-      const isElite = targetStock.score >= 90 && ((targetStock.rsGain || 0) >= 0.04 || targetStock.strategy === 'PRE_BREAKOUT_BASE');
-      if (!isElite) continue;
-    } else if (!isAccumulation && marketRegime && marketRegime.regime === 'NEUTRAL' && targetStock.score < 76 && (targetStock.rsGain || 0) < 0.02) {
-      continue;
+    // Broad Market Regime Gate: In RISK_OFF, strictly block new swing buys
+    if (!isAccumulation && marketRegime && marketRegime.regime === 'RISK_OFF') continue;
+
+    // Anti-Choppiness Gate: In NEUTRAL regimes, do not buy if 5-day market return is negative
+    if (!isAccumulation && marketRegime && marketRegime.regime === 'NEUTRAL') {
+      if (marketRegime.return5d < 0) continue;
+      if (targetStock.score < 92 || (targetStock.rsGain || 0) < 0.06 || (targetStock.technicalStats?.rvol || 1) < 2.0) continue;
     }
 
+    // Cool-off protection: If stopped out within last 8 trading days, do not immediately re-enter unless RVOL >= 2.0
+    if (!isAccumulation && state.history && state.history.length > 0) {
+      const recentLoss = state.history.slice(-30).some(t => {
+        if (t.symbol !== targetStock.symbol || t.profit > 0) return false;
+        const daysDiff = (new Date(targetDate) - new Date(t.sellDate)) / (1000 * 60 * 60 * 24);
+        if (daysDiff >= 0 && daysDiff <= 12) {
+          if ((targetStock.technicalStats?.rvol || 1) >= 2.0) return false;
+          return true;
+        }
+        return false;
+      });
+      if (recentLoss) continue;
+    }
 
     availableSlots = state.config.maxPositions - state.holdings.length;
     if (!isAccumulation && (availableSlots <= 0 || state.cash < 1000)) continue;
@@ -2407,6 +2464,11 @@ async function deployIdleCash(simDate, portfolioType = 'backtest', existingState
       parent.accumulatedPrice = targetStock.price;
 
       newBuysCount++;
+      state.logs.unshift({
+        date: targetDate,
+        sentiment: 'BULLISH',
+        text: `ACCUMULATED POSITION: Added +${qty}x ${targetStock.symbol} @ ₹${targetStock.price.toFixed(2)}. Blended Entry: ₹${blendedBuyPrice.toFixed(2)}, Guaranteed SL: ₹${newStopLoss.toFixed(2)}.`
+      });
       console.log(`[deployIdleCash] [ACCUMULATED] +${qty} shares of ${targetStock.symbol} @ ₹${targetStock.price}. Blended Entry: ₹${blendedBuyPrice.toFixed(2)}, Guaranteed SL: ₹${newStopLoss.toFixed(2)}`);
       continue;
     }
@@ -2443,11 +2505,18 @@ async function deployIdleCash(simDate, portfolioType = 'backtest', existingState
         profit: 0.0,
         profitPercent: 0.0,
         buyReason: targetStock.reason,
-        technicalStats: targetStock.technicalStats
+        technicalStats: targetStock.technicalStats,
+        highestPrice: targetStock.price,
+        entryEma20: targetStock.technicalStats?.ema20 || targetStock.price
       };
 
       state.holdings.push(newHolding);
       newBuysCount++;
+      state.logs.unshift({
+        date: targetDate,
+        sentiment: 'BULLISH',
+        text: `IDLE CASH DEPLOYED: Bought ${qty}x ${targetStock.symbol} @ ₹${targetStock.price.toFixed(2)} (₹${cost.toFixed(0)}). SL: ₹${stopLoss.toFixed(2)}, Target: ₹${targetPrice.toFixed(2)}. ${targetStock.reason}`
+      });
       console.log(`[deployIdleCash] BOUGHT ${qty} shares of ${targetStock.symbol} @ ₹${targetStock.price}. Target: ₹${targetPrice.toFixed(2)}, SL: ₹${stopLoss.toFixed(2)}`);
       if (newBuysCount >= maxDeployBuys) break;
     }

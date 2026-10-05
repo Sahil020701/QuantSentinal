@@ -35,8 +35,9 @@ def _setup_python_path():
 
 _setup_python_path()
 
-# Standard ETFs to include manually for macro indicators and sector indexing
+# Standard ETFs and indices to include manually for macro indicators and sector indexing
 ETFS = [
+    {"symbol": "^NSEI", "name": "Nifty 50 Index", "sector": "ETFs", "cap": "Index"},
     {"symbol": "NIFTYBEES.NS", "name": "Nifty 50 ETF", "sector": "ETFs", "cap": "ETF"},
     {"symbol": "BANKBEES.NS", "name": "Nifty Bank ETF", "sector": "ETFs", "cap": "ETF"},
     {"symbol": "CPSEETF.NS", "name": "CPSE ETF", "sector": "ETFs", "cap": "ETF"},

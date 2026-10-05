@@ -149,10 +149,38 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
   };
 
   const handleResetCustomDate = async (targetDate = selectedStartDate, replay = autoReplay) => {
+    if (portfolioMode === 'live') {
+      const confirmMessage = "Are you sure you want to reset the Live Portfolio to a fresh ₹1,00,000 cash slate starting today?\n\nAll current live holdings, open orders, and trade history will be cleared.";
+      if (!window.confirm(confirmMessage)) return;
+
+      setResetting(true);
+      setMessage('');
+      try {
+        const res = await fetch(`${API_URL}/api/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'live',
+            startDate: 'today',
+            replay: false
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Reset failed");
+        onReset(data.state);
+        setMessage("Live Portfolio successfully reset to clean ₹1,00,000 slate starting today.");
+      } catch (err) {
+        console.error(err);
+        setMessage(`Error: ${err.message}`);
+      } finally {
+        setResetting(false);
+      }
+      return;
+    }
+
+    // Backtest Mode
     const isToday = targetDate === 'today' || targetDate === todayStr;
-    const confirmMessage = (portfolioMode === 'live' || isToday)
-      ? `Are you sure you want to reset the Live Portfolio to a fresh ₹1,00,000 cash slate today?\n\nAll current live holdings and history will be cleared.`
-      : `Are you sure you want to reset the backtest simulation to start on ${targetDate}?\n\nAll current trade history will be reset to initial ₹1,00,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
+    const confirmMessage = `Are you sure you want to reset the backtest simulation to start on ${targetDate}?\n\nAll current trade history will be reset to initial ₹1,00,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
 
     if (!window.confirm(confirmMessage)) return;
 
@@ -163,22 +191,18 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: portfolioMode,
+          mode: 'backtest',
           startDate: targetDate,
           replay: isToday ? false : replay
         })
       });
-      if (!res.ok) throw new Error("Reset failed");
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Reset failed");
       onReset(data.state);
-      setMessage(
-        portfolioMode === 'live'
-          ? "Live Portfolio successfully reset to clean ₹1,00,000 slate."
-          : `Simulation successfully reset to ${targetDate}${replay ? ' and backtest replayed to today.' : '.'}`
-      );
+      setMessage(`Simulation successfully reset to ${targetDate}${replay ? ' and backtest replayed to today.' : '.'}`);
     } catch (err) {
       console.error(err);
-      setMessage("Error: Could not reset simulation.");
+      setMessage(`Error: ${err.message}`);
     } finally {
       setResetting(false);
     }
@@ -511,10 +535,10 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
             </form>
           </div>
 
-          {/* Simulation Commands */}
+          {/* Simulation / Live Desk Commands */}
           <div className="glass-panel">
             <div className="panel-header">
-              <h2>Simulation Commands</h2>
+              <h2>{portfolioMode === 'live' ? 'Live Desk Commands' : 'Backtest Simulation Commands'}</h2>
             </div>
             <div className="config-group">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -524,113 +548,158 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
                   style={{ width: '100%' }}
                   disabled={running || resetting}
                 >
-                  {running ? "Simulating Market Days..." : "Trigger Daily Update"}
+                  {running
+                    ? (portfolioMode === 'live' ? "Updating Live Desk..." : "Simulating Market Days...")
+                    : (portfolioMode === 'live' ? "Trigger Daily Desk Catch-Up" : "Trigger Daily Update")
+                  }
                 </button>
                 <div className="config-desc" style={{ marginBottom: '0.5rem' }}>
-                  Force simulation engine to catch up and execute trades up to today's date using actual daily market bars.
+                  {portfolioMode === 'live'
+                    ? "Sync live market prices and process any trailing stops or qualified entries for today's market session."
+                    : "Force simulation engine to catch up and execute trades up to today's date using actual daily market bars."
+                  }
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.25rem 0 0.5rem 0' }} />
 
-                {/* Custom Reset & Start Date Selection */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>
-                      Reset Simulation & Start Date
-                    </label>
-                    <span style={{
-                      fontSize: '0.75rem',
-                      padding: '0.2rem 0.55rem',
-                      borderRadius: '5px',
-                      background: selectedStartDate === todayStr ? 'var(--green-glow)' : 'var(--accent-glow)',
-                      color: selectedStartDate === todayStr ? 'var(--green)' : 'var(--accent)',
-                      border: `1px solid ${selectedStartDate === todayStr ? 'var(--green-border)' : 'var(--accent-border)'}`,
-                      fontWeight: '600'
-                    }}>
-                      {selectedStartDate === todayStr ? 'Live Forward Mode' : 'Historical Backtest'}
-                    </span>
-                  </div>
+                {portfolioMode === 'live' ? (
+                  /* Live Desk Clean Slate Reset (Strictly Forbids Past Dates) */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+                        Reset Live Trading Desk
+                      </label>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '5px',
+                        background: 'var(--green-glow)',
+                        color: 'var(--green)',
+                        border: '1px solid var(--green-border)',
+                        fontWeight: '600'
+                      }}>
+                        Live Desk Mode
+                      </span>
+                    </div>
 
-                  <div className="config-desc" style={{ marginTop: '-0.25rem' }}>
-                    Choose any past date to run a fresh retrospective backtest, or pick today to start trading from a clean slate.
-                  </div>
+                    <div className="config-desc" style={{ marginTop: '-0.25rem' }}>
+                      Reinitializes the Live Trading Desk to a clean ₹1,00,000 cash balance starting today. Backtesting using past dates is disabled on the Live Desk to protect live execution records. To run historical simulations, switch to the Backtest Simulation tab.
+                    </div>
 
-                  {/* Date Input */}
-                  <div className="config-item" style={{ marginTop: '0.1rem' }}>
-                    <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Choose Start Date (YYYY-MM-DD)</label>
-                    <input
-                      type="date"
-                      value={selectedStartDate}
-                      min={minHistoryDate}
-                      max={todayStr}
-                      onChange={(e) => setSelectedStartDate(e.target.value)}
-                      className="config-input"
+                    <button
+                      onClick={() => handleResetCustomDate('today', false)}
+                      className="btn btn-danger"
+                      style={{ width: '100%', marginTop: '0.35rem', fontWeight: '600' }}
                       disabled={resetting || running}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  </div>
+                    >
+                      {resetting ? "Resetting Live Desk..." : "Reset Live Desk to Today (Clean Slate ₹1,00,000)"}
+                    </button>
 
-                  {/* Preset Pills */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick Date Presets:</div>
-                    <div className="preset-pills">
-                      {datePresets.map((preset) => (
-                        <button
-                          key={preset.value}
-                          type="button"
-                          className={`preset-pill ${selectedStartDate === preset.value ? 'active' : ''}`}
-                          onClick={() => setSelectedStartDate(preset.value)}
-                          disabled={resetting || running}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
+                    <div className="config-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Clears active live holdings, orders, and logs. Historical backtesting is reserved exclusively for the Backtest Simulation portfolio.
                     </div>
                   </div>
+                ) : (
+                  /* Backtest Simulation Reset & Date Selection (Backtest Mode Only) */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+                        Reset Simulation & Start Date
+                      </label>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '5px',
+                        background: 'var(--accent-glow)',
+                        color: 'var(--accent)',
+                        border: '1px solid var(--accent-border)',
+                        fontWeight: '600'
+                      }}>
+                        Historical Backtest
+                      </span>
+                    </div>
 
-                  {/* Auto-Replay Toggle */}
-                  {selectedStartDate !== todayStr && (
-                    <label style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.55rem',
-                      cursor: 'pointer',
-                      fontSize: '0.825rem',
-                      color: 'var(--text-secondary)',
-                      marginTop: '0.15rem'
-                    }}>
+                    <div className="config-desc" style={{ marginTop: '-0.25rem' }}>
+                      Choose any past date to run a fresh retrospective backtest, or pick a date preset below.
+                    </div>
+
+                    {/* Date Input */}
+                    <div className="config-item" style={{ marginTop: '0.1rem' }}>
+                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Choose Start Date (YYYY-MM-DD)</label>
                       <input
-                        type="checkbox"
-                        checked={autoReplay}
-                        onChange={(e) => setAutoReplay(e.target.checked)}
+                        type="date"
+                        value={selectedStartDate}
+                        min={minHistoryDate}
+                        max={todayStr}
+                        onChange={(e) => setSelectedStartDate(e.target.value)}
+                        className="config-input"
                         disabled={resetting || running}
-                        style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
+                        style={{ cursor: 'pointer' }}
                       />
-                      <span>Automatically replay backtest trades from <strong>{selectedStartDate}</strong> to today</span>
-                    </label>
-                  )}
+                    </div>
 
-                  {/* Reset Action Button */}
-                  <button
-                    onClick={() => handleResetCustomDate(selectedStartDate, autoReplay)}
-                    className="btn btn-danger"
-                    style={{ width: '100%', marginTop: '0.35rem', fontWeight: '600' }}
-                    disabled={resetting || running || !selectedStartDate}
-                  >
-                    {resetting
-                      ? "Resetting & Replaying Simulation..."
-                      : selectedStartDate === todayStr
-                        ? "Reset to Today (Clean Slate ₹100k)"
-                        : autoReplay
-                          ? `Reset & Run Backtest from ${selectedStartDate}`
-                          : `Reset Baseline to ${selectedStartDate}`
-                    }
-                  </button>
+                    {/* Preset Pills */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick Date Presets:</div>
+                      <div className="preset-pills">
+                        {datePresets.map((preset) => (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            className={`preset-pill ${selectedStartDate === preset.value ? 'active' : ''}`}
+                            onClick={() => setSelectedStartDate(preset.value)}
+                            disabled={resetting || running}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                  <div className="config-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Wipes all trade history, active holdings, and logs. Reinitializes cash balance to ₹1,00,000 starting on {selectedStartDate}.
+                    {/* Auto-Replay Toggle */}
+                    {selectedStartDate !== todayStr && (
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.55rem',
+                        cursor: 'pointer',
+                        fontSize: '0.825rem',
+                        color: 'var(--text-secondary)',
+                        marginTop: '0.15rem'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={autoReplay}
+                          onChange={(e) => setAutoReplay(e.target.checked)}
+                          disabled={resetting || running}
+                          style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
+                        />
+                        <span>Automatically replay backtest trades from <strong>{selectedStartDate}</strong> to today</span>
+                      </label>
+                    )}
+
+                    {/* Reset Action Button */}
+                    <button
+                      onClick={() => handleResetCustomDate(selectedStartDate, autoReplay)}
+                      className="btn btn-danger"
+                      style={{ width: '100%', marginTop: '0.35rem', fontWeight: '600' }}
+                      disabled={resetting || running || !selectedStartDate}
+                    >
+                      {resetting
+                        ? "Resetting & Replaying Simulation..."
+                        : selectedStartDate === todayStr
+                          ? "Reset to Today (Clean Slate ₹1,00,000)"
+                          : autoReplay
+                            ? `Reset & Run Backtest from ${selectedStartDate}`
+                            : `Reset Baseline to ${selectedStartDate}`
+                      }
+                    </button>
+
+                    <div className="config-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Wipes all trade history, active holdings, and logs. Reinitializes cash balance to ₹1,00,000 starting on {selectedStartDate}.
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>

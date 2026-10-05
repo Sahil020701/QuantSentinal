@@ -60,21 +60,23 @@ export default function App() {
     fetchPortfolio(newMode);
   };
 
-  // Determine market open status (Indian Stock Market: Monday to Friday)
+  // Determine market open status (Indian Stock Market: Monday to Friday, 09:15 - 15:30 IST)
   const getMarketStatusText = () => {
-    const today = new Date();
-    const day = today.getDay(); // 0 is Sunday, 6 is Saturday
-    const hours = today.getHours();
-    const minutes = today.getMinutes();
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+    const istNow = new Date(now.getTime() + istOffset);
+    const day = istNow.getUTCDay(); // 0 is Sunday, 6 is Saturday in IST
+    const hours = istNow.getUTCHours();
+    const minutes = istNow.getUTCMinutes();
     const time = hours * 100 + minutes;
 
     if (day === 0 || day === 6) {
       return { open: false, text: "MARKET CLOSED (WEEKEND)" };
     }
 
-    // Market hours: 9:15 AM (0915) to 3:30 PM (1530)
+    // Market hours: 9:15 AM (0915) to 3:30 PM (1530) IST
     if (time >= 915 && time <= 1530) {
-      return { open: true, text: "MARKET LIVE (09:15 - 15:30)" };
+      return { open: true, text: "MARKET LIVE (09:15 - 15:30 IST)" };
     }
 
     return { open: false, text: "MARKET CLOSED (AFTER HOURS)" };

@@ -60,10 +60,27 @@ const NSE_HOLIDAYS = new Set([
   '2024-10-02', '2024-11-01', '2024-11-15', '2024-12-25'
 ]);
 
-// Helper to get the latest *completed* trading session date in IST.
-// NSE market hours: 09:15–15:30 IST (UTC+5:30).
-// - If it's a weekday AND past 15:30 IST AND not an exchange holiday → use today's IST date (session is closed).
-// - Otherwise (pre-market, weekend, exchange holiday) → automatically step back to the true latest completed market session.
+// Helper to determine if Indian Stock Market (NSE) is currently open in IST
+function isMarketHoursIST() {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+  const istNow = new Date(now.getTime() + istOffset);
+  const day = istNow.getUTCDay(); // 0=Sun, 6=Sat in IST
+  const pad = (n) => String(n).padStart(2, '0');
+  const dateStr = `${istNow.getUTCFullYear()}-${pad(istNow.getUTCMonth() + 1)}-${pad(istNow.getUTCDate())}`;
+
+  if (day === 0 || day === 6 || NSE_HOLIDAYS.has(dateStr)) {
+    return false;
+  }
+
+  const time = istNow.getUTCHours() * 100 + istNow.getUTCMinutes();
+  return (time >= 915 && time <= 1530);
+}
+
+// Helper to get the latest trading session date in IST.
+// NSE market hours: 09:15-15:30 IST (UTC+5:30).
+// - If it's a weekday AND at or past 09:15 IST AND not an exchange holiday -> use today's IST date (session is live or closed).
+// - Otherwise (pre-market before 09:15, weekend, exchange holiday) -> automatically step back to the true latest completed market session.
 function getLatestTradingDateIST() {
   const now = new Date();
   const istOffset = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
@@ -76,10 +93,10 @@ function getLatestTradingDateIST() {
   const toDateStr = (d) =>
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 
-  // If today is a weekday, market has closed (after 15:30 IST), and today is not a holiday, candidate is today
-  // Otherwise, start from yesterday
+  // If today is a weekday, market has opened (at or past 09:15 IST), and today is not an NSE holiday, candidate is today
+  // Otherwise (pre-market, weekend, holiday), start from yesterday
   let d;
-  if (dayOfWeek >= 1 && dayOfWeek <= 5 && istHHMM >= 1530 && !NSE_HOLIDAYS.has(toDateStr(istNow))) {
+  if (dayOfWeek >= 1 && dayOfWeek <= 5 && istHHMM >= 915 && !NSE_HOLIDAYS.has(toDateStr(istNow))) {
     d = new Date(istNow.getTime());
   } else {
     d = new Date(istNow.getTime() - 24 * 60 * 60 * 1000);
@@ -124,11 +141,12 @@ app.get('/api/scanner', async (req, res) => {
 // GET Top Algo Rankings with Indicator Pass/Fail Breakdown
 app.get('/api/algo-top25', async (req, res) => {
   try {
-    const { date, limit, refresh } = req.query;
+    const { date, limit, refresh, mode } = req.query;
+    const portfolioType = (mode === 'backtest') ? 'backtest' : 'live';
     const todayStr = getTodayUTCDateString();
     const targetDate = date || todayStr;
     const forceRefresh = refresh === 'true' || refresh === '1';
-    const data = await getTop25AlgoRankings(targetDate, forceRefresh);
+    const data = await getTop25AlgoRankings(targetDate, forceRefresh, portfolioType);
     if (limit && limit !== 'all' && limit !== 'ALL') {
       const numLimit = parseInt(limit, 10);
       if (!isNaN(numLimit) && numLimit > 0) {
@@ -164,13 +182,19 @@ app.post('/api/reset', async (req, res) => {
     const todayStr = getTodayUTCDateString();
 
     if (mode === 'live') {
+      if (startDate && startDate !== 'today' && startDate !== todayStr) {
+        return res.status(400).json({
+          error: "Backtesting using past dates is not permitted on the Live Portfolio. Use Backtest mode for historical simulations."
+        });
+      }
       console.log("Resetting Live Portfolio to fresh ₹1,00,000 baseline today...");
       const state = await initLivePortfolio();
       return res.json({ message: "Live Portfolio reset successfully with clean ₹1,00,000 slate.", state });
     }
 
     const minHistoryDateStr = '2019-01-01';
-    let rawStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || '2023-10-01');
+    const defaultBacktestStart = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    let rawStartDate = (startDate === 'today' || startDate === todayStr) ? todayStr : (startDate || defaultBacktestStart);
     const targetStartDate = rawStartDate < minHistoryDateStr ? minHistoryDateStr : rawStartDate;
 
     console.log(`Resetting backtest baseline to ${targetStartDate} (replay=${replay})...`);
@@ -350,15 +374,9 @@ function startTradingScheduler() {
   // 2. Schedule periodic checks (Every 30 minutes during market hours)
   const SCHEDULER_INTERVAL_MS = 30 * 60 * 1000;
   setInterval(() => {
-    const today = new Date();
-    const day = today.getDay();
-    const hours = today.getHours();
-    const minutes = today.getMinutes();
-    const time = hours * 100 + minutes;
-
-    // Check if market is open (Mon-Fri, 09:15 to 15:30 IST)
-    const isMarketOpen = (day >= 1 && day <= 5 && time >= 915 && time <= 1530);
-    console.log(`[SCHEDULER TIMER] Triggered. Market Open Status: ${isMarketOpen}`);
+    // Check if market is open (Mon-Fri, 09:15 to 15:30 IST, excluding exchange holidays)
+    const isMarketOpen = isMarketHoursIST();
+    console.log(`[SCHEDULER TIMER] Triggered. Market Open Status (IST): ${isMarketOpen}`);
 
     // Always run cycle (forces live cache refresh during market hours)
     runAutomatedEngineCycle(isMarketOpen);
