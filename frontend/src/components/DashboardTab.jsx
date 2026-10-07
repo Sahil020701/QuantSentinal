@@ -226,6 +226,38 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
     return { cagr, isAbsolute: false, days: diffDays, years };
   }, [firstValuation, latestValuation, totalValue, totalDeposited, profitPercent]);
 
+  // ── Previous Day (1-Day) P&L Metrics ─────────────────────────────────────
+  const prevDayMetrics = useMemo(() => {
+    if (!valuationHistory || valuationHistory.length < 2) {
+      return {
+        hasPrev: false,
+        amount: 0,
+        percent: 0,
+        prevDate: null
+      };
+    }
+    const curr = valuationHistory[valuationHistory.length - 1];
+    const prev = valuationHistory[valuationHistory.length - 2];
+
+    const currDep = curr.totalDeposited || totalDeposited;
+    const prevDep = prev.totalDeposited || currDep;
+    const currTradingPL = (curr.totalValue || 0) - currDep;
+    const prevTradingPL = (prev.totalValue || 0) - prevDep;
+
+    // Pure trading P&L change between the two sessions (deposit-adjusted)
+    const amount = currTradingPL - prevTradingPL;
+    const prevVal = prev.totalValue || 1;
+    const percent = prevVal > 0 ? (amount / prevVal) * 100 : 0;
+
+    return {
+      hasPrev: true,
+      amount,
+      percent,
+      prevDate: prev.date,
+      currDate: curr.date
+    };
+  }, [valuationHistory, totalDeposited]);
+
   // ── Filtered chart data ─────────────────────────────────────────────────
   const selectedRange = RANGES.find(r => r.label === activeRange) || RANGES[RANGES.length - 1];
   const filteredHistory = useMemo(
@@ -289,13 +321,26 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
           <div className="kpi-sub neutral">Total Assets Under Management</div>
         </div>
 
-        <div className="kpi-card green">
-          <div className="kpi-label">Trading P&amp;L</div>
+        <div className={`kpi-card ${netProfit >= 0 ? 'green' : 'red'}`}>
+          <div className="kpi-label">Total Trading P&amp;L</div>
           <div className="kpi-value" style={{ color: netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>
             {netProfit >= 0 ? '+' : ''}₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className={`kpi-sub ${profitPercent >= 0 ? 'positive' : 'negative'}`}>
-            {profitPercent >= 0 ? '▲' : '▼'} {Math.abs(profitPercent).toFixed(2)}% Absolute Return
+            {profitPercent >= 0 ? '▲ +' : '▼ '}{profitPercent.toFixed(2)}% All-Time Return
+          </div>
+        </div>
+
+        <div className={`kpi-card ${prevDayMetrics.amount >= 0 ? 'green' : 'red'}`}>
+          <div className="kpi-label">Previous Day P&amp;L</div>
+          <div className="kpi-value" style={{ color: prevDayMetrics.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {prevDayMetrics.amount >= 0 ? '+' : ''}₹{prevDayMetrics.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className={`kpi-sub ${prevDayMetrics.percent >= 0 ? 'positive' : 'negative'}`}>
+            {prevDayMetrics.hasPrev
+              ? `${prevDayMetrics.percent >= 0 ? '▲ +' : '▼ '}${prevDayMetrics.percent.toFixed(2)}% vs ${prevDayMetrics.prevDate}`
+              : 'Initial Session Baseline'
+            }
           </div>
         </div>
 
