@@ -1,0 +1,67 @@
+[
+  {
+    "label": "1Y (Hosted Window)",
+    "startDate": "2025-10-05",
+    "endDate": "2026-10-05",
+    "trades": 164,
+    "winCount": 112,
+    "lossCount": 52,
+    "winRatio": 68.3,
+    "initialCapital": 100000,
+    "finalValue": 158308.96,
+    "netPnLAmount": 58308.96,
+    "pnlPercent": 58.31
+  },
+  {
+    "label": "2Y (2 Years)",
+    "startDate": "2024-10-05",
+    "endDate": "2026-10-05",
+    "trades": 312,
+    "winCount": 205,
+    "lossCount": 107,
+    "winRatio": 65.7,
+    "initialCapital": 100000,
+    "finalValue": 198313.16,
+    "netPnLAmount": 98313.16,
+    "pnlPercent": 98.31
+  },
+  {
+    "label": "3Y (3 Years)",
+    "startDate": "2023-10-05",
+    "endDate": "2026-10-05",
+    "trades": 487,
+    "winCount": 329,
+    "lossCount": 158,
+    "winRatio": 67.6,
+    "initialCapital": 100000,
+    "finalValue": 344506.26,
+    "netPnLAmount": 244506.26,
+    "pnlPercent": 244.51
+  },
+  {
+    "label": "5Y (5 Years)",
+    "startDate": "2021-10-05",
+    "endDate": "2026-10-05",
+    "trades": 800,
+    "winCount": 526,
+    "lossCount": 274,
+    "winRatio": 65.8,
+    "initialCapital": 100000,
+    "finalValue": 571775.55,
+    "netPnLAmount": 471775.55,
+    "pnlPercent": 471.78
+  },
+  {
+    "label": "7.7Y (Since 2019 / Covid Crash)",
+    "startDate": "2019-01-01",
+    "endDate": "2026-10-05",
+    "trades": 1172,
+    "winCount": 787,
+    "lossCount": 385,
+    "winRatio": 67.2,
+    "initialCapital": 100000,
+    "finalValue": 2020323.4,
+    "netPnLAmount": 1920323.4,
+    "pnlPercent": 1920.32
+  }
+]

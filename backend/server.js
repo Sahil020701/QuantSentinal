@@ -160,15 +160,30 @@ app.get('/api/algo-top25', async (req, res) => {
   }
 });
 
-// POST Trigger Catch-up Run Manually
+// POST Trigger Catch-up Run Manually - Synchronously executes for BOTH portfolios
 app.post('/api/trigger-run', async (req, res) => {
   try {
-    const mode = (req.body?.mode === 'live' || req.query.mode === 'live') ? 'live' : 'backtest';
+    const activeMode = (req.body?.mode === 'live' || req.query.mode === 'live') ? 'live' : 'backtest';
     const todayStr = getTodayUTCDateString();
-    console.log(`Manual trigger run requested up to ${todayStr} for ${mode}...`);
-    let state = await runSimulation(todayStr, true, mode);
-    state = await deployIdleCash(todayStr, mode);
-    res.json({ message: `Simulation catch-up completed for ${mode} portfolio.`, state });
+    console.log(`Manual trigger run requested up to ${todayStr} for BOTH portfolios (active view: ${activeMode})...`);
+
+    // 1. Run catch-up for Live portfolio
+    let liveState = await runSimulation(todayStr, true, 'live');
+    liveState = await deployIdleCash(todayStr, 'live', liveState);
+    await saveState(liveState, 'live');
+
+    // 2. Run catch-up for Backtest portfolio
+    let backtestState = await runSimulation(todayStr, true, 'backtest');
+    backtestState = await deployIdleCash(todayStr, 'backtest', backtestState);
+    await saveState(backtestState, 'backtest');
+
+    const activeState = (activeMode === 'live') ? liveState : backtestState;
+    res.json({
+      message: `Daily simulation catch-up completed synchronously for both Live and Backtest portfolios up to ${todayStr}.`,
+      state: activeState,
+      liveState,
+      backtestState
+    });
   } catch (error) {
     console.error("Error in manual run:", error);
     res.status(500).json({ error: "Failed to run simulation", details: error.message });
@@ -347,14 +362,16 @@ async function runAutomatedEngineCycle(forceRefresh = false) {
   isSchedulerRunning = true;
   try {
     const todayStr = getTodayUTCDateString();
-    let state = await loadState('live');
-    // Ensure Live portfolio tracks forward automatically
-    if (state.lastSimulationDate < todayStr) {
-      console.log(`[AUTOMATED SCHEDULER] Running daily engine catch-up for Live Portfolio for ${todayStr}...`);
-      state = await runSimulation(todayStr, forceRefresh, 'live');
-      state = await deployIdleCash(todayStr, 'live', state);
-      await saveState(state, 'live');
-      console.log(`[AUTOMATED SCHEDULER] Live cycle complete. Last simulation date: ${state.lastSimulationDate}`);
+    // Synchronously track BOTH portfolios forward so neither ever falls behind
+    for (const pType of ['live', 'backtest']) {
+      let state = await loadState(pType);
+      if (state.lastSimulationDate < todayStr) {
+        console.log(`[AUTOMATED SCHEDULER] Running daily engine catch-up for ${pType.toUpperCase()} Portfolio for ${todayStr}...`);
+        state = await runSimulation(todayStr, forceRefresh, pType);
+        state = await deployIdleCash(todayStr, pType, state);
+        await saveState(state, pType);
+        console.log(`[AUTOMATED SCHEDULER] ${pType.toUpperCase()} cycle complete. Last simulation date: ${state.lastSimulationDate}`);
+      }
     }
   } catch (error) {
     console.error("[AUTOMATED SCHEDULER] Error during engine cycle execution:", error.message);

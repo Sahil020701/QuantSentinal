@@ -252,8 +252,17 @@ export default function App() {
             onDeposit={(newState) => {
               updatePortfolioState(portfolioMode, newState);
             }}
-            onTriggerRun={(newState) => {
-              updatePortfolioState(portfolioMode, newState);
+            onTriggerRun={(newState, liveState, backtestState) => {
+              if (liveState && backtestState) {
+                setPortfolioCache(prev => ({
+                  ...prev,
+                  live: liveState,
+                  backtest: backtestState
+                }));
+                setPortfolio(portfolioMode === 'live' ? liveState : backtestState);
+              } else {
+                updatePortfolioState(portfolioMode, newState);
+              }
             }}
           />
         )}

@@ -245,7 +245,7 @@ async function resetSimulation(customStartDate, portfolioType = 'backtest', save
       if (doc && doc.config) {
         activeConfig = { ...INITIAL_STATE.config, ...doc.config };
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   const state = {
@@ -438,12 +438,17 @@ function hasBarsForRange(dataObj, minStartDate, targetEndDate) {
   return false;
 }
 
-// Helper to select the benchmark series that has the latest available market bar
+// Helper to select the benchmark series that has the latest available market bar and most complete session history
 function getBenchmarkSeries(dataObj) {
   if (!dataObj || typeof dataObj !== 'object') return null;
-  const candidates = [dataObj['NIFTYBEES.NS'], dataObj['^NSEI'], dataObj['RELIANCE.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
+  const candidates = [dataObj['RELIANCE.NS'], dataObj['^NSEI'], dataObj['NIFTYBEES.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
   if (candidates.length === 0) return null;
-  candidates.sort((a, b) => b[b.length - 1].date.localeCompare(a[a.length - 1].date));
+  // Sort by latest available date descending, then by series length descending (most complete history)
+  candidates.sort((a, b) => {
+    const dateCmp = b[b.length - 1].date.localeCompare(a[a.length - 1].date);
+    if (dateCmp !== 0) return dateCmp;
+    return b.length - a.length;
+  });
   return candidates[0];
 }
 
@@ -705,7 +710,15 @@ function evaluateMarketRegime(simDate, cachedData, isConservative = false) {
     return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT', return5d: 0 };
   }
 
-  const dayIdx = benchmarkData.findIndex(row => row.date === simDate);
+  let dayIdx = benchmarkData.findIndex(row => row.date === simDate);
+  if (dayIdx === -1) {
+    for (let i = benchmarkData.length - 1; i >= 0; i--) {
+      if (benchmarkData[i].date <= simDate) {
+        dayIdx = i;
+        break;
+      }
+    }
+  }
   if (dayIdx === -1 || dayIdx < 20) {
     return { regime: 'NEUTRAL', benchmarkRsi: 50, trend: 'FLAT', return5d: 0 };
   }
@@ -758,7 +771,15 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
   const benchmarkData = getBenchmarkSeries(cachedData);
   let benchmarkReturn20d = 0;
   if (benchmarkData && benchmarkData.length > 0) {
-    const bIdx = benchmarkData.findIndex(row => row.date === simDate);
+    let bIdx = benchmarkData.findIndex(row => row.date === simDate);
+    if (bIdx === -1) {
+      for (let i = benchmarkData.length - 1; i >= 0; i--) {
+        if (benchmarkData[i].date <= simDate) {
+          bIdx = i;
+          break;
+        }
+      }
+    }
     if (bIdx >= 20) {
       const bClose = benchmarkData[bIdx].close;
       const bPast = benchmarkData[bIdx - 20].close;
@@ -1021,9 +1042,15 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
   }
 
   // Extract dates that are greater than lastRunDateStr and <= targetEndDateStr
+  // If forceRefresh is requested and lastRunDateStr === targetEndDateStr, re-evaluate targetEndDateStr with latest data
   const tradingDates = calendarData
     .map(row => row.date)
-    .filter(date => date > lastRunDateStr && date <= targetEndDateStr)
+    .filter(date => {
+      if (forceRefresh && lastRunDateStr === targetEndDateStr) {
+        return date === targetEndDateStr;
+      }
+      return date > lastRunDateStr && date <= targetEndDateStr;
+    })
     .sort();
 
   if (tradingDates.length === 0) {
@@ -1550,7 +1577,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
         }
 
         const isFull = state.holdings.length >= state.config.maxPositions;
-        const lowCash = state.cash < targetStock.price || state.cash < 4000;
+        const lowCash = state.cash < targetStock.price || state.cash < 2000;
 
         if ((isFull || lowCash) && rotationEnabled && targetStock.score >= minCandScore && state.holdings.length > 0) {
           let worstHoldingIndex = -1;
@@ -1606,7 +1633,7 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
         }
 
         if (state.holdings.length >= state.config.maxPositions) break;
-        if (state.cash < 4000) break;
+        if (state.cash < 2000) break;
 
         executeBuy(targetStock);
       }
@@ -1629,6 +1656,14 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
 
     const totalValue = state.cash + holdingsValue;
     const profitPercent = currentTotalDeposited > 0 ? ((totalValue - currentTotalDeposited) / currentTotalDeposited) * 100 : 0.0;
+
+    // If re-evaluating simDate under forceRefresh, remove prior provisional entry for this date
+    if (state.valuationHistory && state.valuationHistory.length > 0 && state.valuationHistory[state.valuationHistory.length - 1].date === simDate) {
+      state.valuationHistory.pop();
+    }
+    if (state.logs && state.logs.length > 0 && state.logs[0].date === simDate) {
+      state.logs.shift();
+    }
 
     // Append to valuation history
     state.valuationHistory.push({

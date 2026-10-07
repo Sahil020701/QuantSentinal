@@ -138,8 +138,8 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
       });
       if (!res.ok) throw new Error("Trigger run failed");
       const data = await res.json();
-      onTriggerRun(data.state);
-      setMessage(`Daily run catch-up completed for ${portfolioMode === 'live' ? 'Live Portfolio' : 'Backtest'}.`);
+      onTriggerRun(data.state, data.liveState, data.backtestState);
+      setMessage(`Daily update completed successfully for both Live and Backtest portfolios.`);
     } catch (err) {
       console.error(err);
       setMessage("Error: Daily simulation run failed.");
@@ -178,9 +178,9 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
       return;
     }
 
-    // Backtest Mode
+    // Backtest Mode (Strictly touches only Backtest portfolio)
     const isToday = targetDate === 'today' || targetDate === todayStr;
-    const confirmMessage = `Are you sure you want to reset the backtest simulation to start on ${targetDate}?\n\nAll current trade history will be reset to initial ₹1,00,000 on ${targetDate}.${replay ? '\n\nThe engine will automatically replay all trading days up to today.' : ''}`;
+    const confirmMessage = `Are you sure you want to reset the backtest simulation to start on ${targetDate}?\n\nThis will ONLY reset the historical Backtest portfolio (to initial ₹1,00,000) and will NOT touch the Live Portfolio.${replay ? '\n\nThe engine will automatically replay all backtest trading days up to today.' : ''}`;
 
     if (!window.confirm(confirmMessage)) return;
 
@@ -199,7 +199,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Reset failed");
       onReset(data.state);
-      setMessage(`Simulation successfully reset to ${targetDate}${replay ? ' and backtest replayed to today.' : '.'}`);
+      setMessage(`Backtest simulation successfully reset to ${targetDate} (Live Portfolio untouched).`);
     } catch (err) {
       console.error(err);
       setMessage(`Error: ${err.message}`);
@@ -549,15 +549,12 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
                   disabled={running || resetting}
                 >
                   {running
-                    ? (portfolioMode === 'live' ? "Updating Live Desk..." : "Simulating Market Days...")
-                    : (portfolioMode === 'live' ? "Trigger Daily Desk Catch-Up" : "Trigger Daily Update")
+                    ? "Updating Both Portfolios..."
+                    : "Trigger Daily Update (Both Portfolios)"
                   }
                 </button>
                 <div className="config-desc" style={{ marginBottom: '0.5rem' }}>
-                  {portfolioMode === 'live'
-                    ? "Sync live market prices and process any trailing stops or qualified entries for today's market session."
-                    : "Force simulation engine to catch up and execute trades up to today's date using actual daily market bars."
-                  }
+                  Force simulation engine to catch up and execute qualified trades up to today's date synchronously across BOTH Live Desk and Backtesting portfolios.
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.25rem 0 0.5rem 0' }} />
