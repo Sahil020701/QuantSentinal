@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL || 'https://130.210.13.143.sslip.io';
 
 export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigUpdate, onReset, onDeposit, onTriggerRun }) {
   const { config } = portfolio;

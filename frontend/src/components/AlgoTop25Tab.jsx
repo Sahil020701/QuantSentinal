@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import MiniChart from './MiniChart';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL || 'https://130.210.13.143.sslip.io';
 
 export default function AlgoTop25Tab({ portfolioMode = 'live', onTradeExecuted }) {
   const [data, setData] = useState(null);

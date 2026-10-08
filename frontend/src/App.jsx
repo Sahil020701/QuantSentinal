@@ -8,7 +8,7 @@ import LedgerTab from './components/LedgerTab';
 import ConfigTab from './components/ConfigTab';
 import AlgoTop25Tab from './components/AlgoTop25Tab';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL || 'https://130.210.13.143.sslip.io';
 
 export default function App() {
   const [portfolioMode, setPortfolioMode] = useState(() => {
