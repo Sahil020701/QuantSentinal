@@ -190,8 +190,15 @@ async function saveState(state, portfolioType) {
 }
 
 // Initialize clean live forward portfolio with ₹50,000 cash starting today
-async function initLivePortfolio() {
-  const latestDate = getLatestCompletedMarketDate() || formatUTCDate(new Date());
+async function initLivePortfolio(customDate = null) {
+  let latestDate = customDate || getLatestCompletedMarketDate();
+  if (!latestDate) {
+    const d = new Date();
+    while (d.getUTCDay() === 0 || d.getUTCDay() === 6) {
+      d.setDate(d.getDate() - 1);
+    }
+    latestDate = formatUTCDate(d);
+  }
   let activeConfig = INITIAL_STATE.config;
   if (inMemoryState && inMemoryState.config) {
     activeConfig = { ...INITIAL_STATE.config, ...inMemoryState.config };
@@ -1022,9 +1029,10 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
   const pType = portfolioType || 'backtest';
   const state = existingState || await loadState(pType);
 
-  // Live Portfolio Guardrail: strictly forbid running backward historical simulations
-  if (pType === 'live' && targetEndDateStr < state.lastSimulationDate) {
-    throw new Error(`Cannot run historical simulations on the Live Portfolio (requested: ${targetEndDateStr}, current: ${state.lastSimulationDate}). Use Backtest mode for historical simulations.`);
+  // Live Portfolio Guardrail: gracefully handle when live portfolio is already up to date
+  if (pType === 'live' && targetEndDateStr <= state.lastSimulationDate) {
+    console.log(`[runSimulation] Live Portfolio is already up to date (current: ${state.lastSimulationDate}, requested target: ${targetEndDateStr}).`);
+    return state;
   }
 
   const cachedData = await updateCache(targetEndDateStr, forceRefresh, state.lastSimulationDate);

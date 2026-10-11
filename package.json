@@ -7,7 +7,8 @@
     "backend": "npm start --prefix backend",
     "frontend": "npm run dev --prefix frontend",
     "dev": "npx concurrently \"npm run backend\" \"npm run frontend\"",
-    "backtest": "node scripts/backtest.js"
+    "backtest": "node scripts/backtest.js",
+    "deploy": "ssh -i ~/.ssh/oracle_key.key ubuntu@130.210.13.143 'cd /home/ubuntu/QuantSentinal && git checkout -- . && git pull origin main && cd backend && npm install && pm2 reload quant-backend'"
   },
   "dependencies": {
     "concurrently": "^8.2.2"
