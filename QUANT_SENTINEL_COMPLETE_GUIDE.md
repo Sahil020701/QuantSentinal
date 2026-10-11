@@ -673,7 +673,8 @@ The backend reads `MONGODB_URI` from `backend/.env` (it falls back to a local Mo
 | `POST /api/config` | Update strategy settings |
 | `POST /api/deposit` | Add cash |
 | `POST /api/reset` | Reset (backtest takes `startDate`, `replay`) |
-| `POST /api/trigger-run` | Run catch-up simulation |
+| `POST /api/trigger-run` | Run daily catch-up / update synchronously for both portfolios (also auto-triggered at 15:45 IST Mon–Fri) |
+| `GET /api/scheduler` | Check automated daily trigger schedule and status |
 | `POST /api/live/buy` | Log a live buy |
 | `POST /api/live/sell` | Close a live holding |
 | `GET /api/algo-top25` | Ranked candidates |

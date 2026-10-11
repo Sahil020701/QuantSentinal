@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://130.210.13.143.sslip.io';
 
@@ -23,6 +23,14 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
   const [resetting, setResetting] = useState(false);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState('');
+  const [schedulerInfo, setSchedulerInfo] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/scheduler`)
+      .then(res => res.json())
+      .then(data => setSchedulerInfo(data))
+      .catch(() => {});
+  }, []);
 
   // Simulation start date selection state
   const getTodayStr = () => {
@@ -139,6 +147,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
       if (!res.ok) throw new Error("Trigger run failed");
       const data = await res.json();
       onTriggerRun(data.state, data.liveState, data.backtestState);
+      if (data.scheduler) setSchedulerInfo(data.scheduler);
       setMessage(`Daily update completed successfully for both Live and Backtest portfolios.`);
     } catch (err) {
       console.error(err);
@@ -553,8 +562,51 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
                     : "Trigger Daily Update (Both Portfolios)"
                   }
                 </button>
-                <div className="config-desc" style={{ marginBottom: '0.5rem' }}>
+                <div className="config-desc" style={{ marginBottom: '0.25rem' }}>
                   Force simulation engine to catch up and execute qualified trades up to today's date synchronously across BOTH Live Desk and Backtesting portfolios.
+                </div>
+
+                {/* Automated Daily Trigger Status Card */}
+                <div style={{
+                  padding: '0.65rem 0.85rem',
+                  background: 'rgba(56, 189, 248, 0.08)',
+                  border: '1px solid rgba(56, 189, 248, 0.22)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                  fontSize: '0.8rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+                      <span>⏰ Automated Daily Trigger</span>
+                      <span style={{
+                        fontSize: '0.7rem',
+                        padding: '0.15rem 0.45rem',
+                        borderRadius: '4px',
+                        background: 'rgba(34, 197, 94, 0.15)',
+                        color: '#22c55e',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        fontWeight: '600'
+                      }}>
+                        Active
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {schedulerInfo?.scheduleTimeIST || '15:45'} IST (Mon–Fri)
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                    Daily Update is automatically triggered everyday at <strong>{schedulerInfo?.scheduleTimeIST || '15:45'} IST (3:45 PM)</strong> after NSE market close to synchronize closing bars across both Live & Backtest portfolios.
+                  </div>
+                  {schedulerInfo?.lastRun && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Last run: {new Date(schedulerInfo.lastRun.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({schedulerInfo.lastRun.source === 'scheduled_cron' ? 'Automated' : 'Manual'})</span>
+                      <span style={{ color: schedulerInfo.lastRun.status === 'success' ? '#22c55e' : '#ef4444' }}>
+                        {schedulerInfo.lastRun.status === 'success' ? '✓ Completed' : '⚠ Error'}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.25rem 0 0.5rem 0' }} />

@@ -6,6 +6,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const cron = require('node-cron');
 const {
   loadState,
   saveState,
@@ -160,34 +161,107 @@ app.get('/api/algo-top25', async (req, res) => {
   }
 });
 
-// POST Trigger Catch-up Run Manually - Synchronously executes for BOTH portfolios
-app.post('/api/trigger-run', async (req, res) => {
+// Scheduler Configuration & Status State
+const schedulerStatus = {
+  active: true,
+  scheduleTimeIST: process.env.DAILY_UPDATE_TIME_IST || '15:45',
+  cronExpression: process.env.DAILY_UPDATE_CRON || '45 15 * * 1-5',
+  timezone: 'Asia/Kolkata',
+  description: 'Automated Daily Update runs every trading day (Monday to Friday) at 15:45 IST after NSE market close.',
+  isExecuting: false,
+  lastRun: null
+};
+
+// Core Daily Update Runner: Synchronously executes for BOTH Live and Backtest portfolios
+async function executeDailyUpdate(triggerSource = 'manual', forceRefresh = true) {
+  if (schedulerStatus.isExecuting) {
+    console.log(`[DAILY UPDATE] Execution already in progress. Skipping trigger from ${triggerSource}.`);
+    return { skipped: true, reason: 'Already in progress' };
+  }
+
+  schedulerStatus.isExecuting = true;
+  const startTime = Date.now();
+  const todayStr = getTodayUTCDateString();
+
   try {
-    const activeMode = (req.body?.mode === 'live' || req.query.mode === 'live') ? 'live' : 'backtest';
-    const todayStr = getTodayUTCDateString();
-    console.log(`Manual trigger run requested up to ${todayStr} for BOTH portfolios (active view: ${activeMode})...`);
+    console.log(`[DAILY UPDATE] Starting Daily Update (source: ${triggerSource}) for BOTH portfolios up to ${todayStr}...`);
 
     // 1. Run catch-up for Live portfolio
-    let liveState = await runSimulation(todayStr, true, 'live');
+    let liveState = await runSimulation(todayStr, forceRefresh, 'live');
     liveState = await deployIdleCash(todayStr, 'live', liveState);
     await saveState(liveState, 'live');
 
     // 2. Run catch-up for Backtest portfolio
-    let backtestState = await runSimulation(todayStr, true, 'backtest');
+    let backtestState = await runSimulation(todayStr, forceRefresh, 'backtest');
     backtestState = await deployIdleCash(todayStr, 'backtest', backtestState);
     await saveState(backtestState, 'backtest');
 
-    const activeState = (activeMode === 'live') ? liveState : backtestState;
-    res.json({
-      message: `Daily simulation catch-up completed synchronously for both Live and Backtest portfolios up to ${todayStr}.`,
-      state: activeState,
+    const durationMs = Date.now() - startTime;
+    schedulerStatus.lastRun = {
+      timestamp: new Date().toISOString(),
+      dateStr: todayStr,
+      source: triggerSource,
+      status: 'success',
+      durationMs
+    };
+
+    console.log(`[DAILY UPDATE] Completed successfully for both portfolios up to ${todayStr} (source: ${triggerSource}, ${durationMs}ms).`);
+    return {
+      success: true,
+      todayStr,
       liveState,
-      backtestState
+      backtestState,
+      lastRun: schedulerStatus.lastRun
+    };
+  } catch (error) {
+    console.error(`[DAILY UPDATE] Failed execution (source: ${triggerSource}):`, error);
+    schedulerStatus.lastRun = {
+      timestamp: new Date().toISOString(),
+      dateStr: todayStr,
+      source: triggerSource,
+      status: 'error',
+      error: error.message
+    };
+    throw error;
+  } finally {
+    schedulerStatus.isExecuting = false;
+  }
+}
+
+// POST Trigger Catch-up Run Manually - Synchronously executes for BOTH portfolios
+app.post('/api/trigger-run', async (req, res) => {
+  try {
+    const activeMode = (req.body?.mode === 'live' || req.query.mode === 'live') ? 'live' : 'backtest';
+    const result = await executeDailyUpdate('manual', true);
+    if (result.skipped) {
+      return res.status(409).json({ message: "Daily update is currently executing. Please try again shortly." });
+    }
+    const activeState = (activeMode === 'live') ? result.liveState : result.backtestState;
+    res.json({
+      message: `Daily simulation catch-up completed synchronously for both Live and Backtest portfolios up to ${result.todayStr}.`,
+      state: activeState,
+      liveState: result.liveState,
+      backtestState: result.backtestState,
+      scheduler: schedulerStatus
     });
   } catch (error) {
     console.error("Error in manual run:", error);
     res.status(500).json({ error: "Failed to run simulation", details: error.message });
   }
+});
+
+// GET Scheduler Configuration and Status
+app.get('/api/scheduler', (req, res) => {
+  res.json({
+    active: schedulerStatus.active,
+    scheduleTimeIST: schedulerStatus.scheduleTimeIST,
+    cronExpression: schedulerStatus.cronExpression,
+    timezone: schedulerStatus.timezone,
+    description: schedulerStatus.description,
+    isMarketHours: isMarketHoursIST(),
+    isExecuting: schedulerStatus.isExecuting,
+    lastRun: schedulerStatus.lastRun
+  });
 });
 
 // POST Reset Simulation
@@ -356,9 +430,9 @@ app.post('/api/live/sell', async (req, res) => {
 
 let isSchedulerRunning = false;
 
-// Automated Background Scheduler for Market Open & Trigger Execution
+// Automated Background Scheduler for Intraday Market Checks
 async function runAutomatedEngineCycle(forceRefresh = false) {
-  if (isSchedulerRunning) return;
+  if (isSchedulerRunning || schedulerStatus.isExecuting) return;
   isSchedulerRunning = true;
   try {
     const todayStr = getTodayUTCDateString();
@@ -366,7 +440,7 @@ async function runAutomatedEngineCycle(forceRefresh = false) {
     for (const pType of ['live', 'backtest']) {
       let state = await loadState(pType);
       if (state.lastSimulationDate < todayStr) {
-        console.log(`[AUTOMATED SCHEDULER] Running daily engine catch-up for ${pType.toUpperCase()} Portfolio for ${todayStr}...`);
+        console.log(`[AUTOMATED SCHEDULER] Running intraday catch-up for ${pType.toUpperCase()} Portfolio for ${todayStr}...`);
         state = await runSimulation(todayStr, forceRefresh, pType);
         state = await deployIdleCash(todayStr, pType, state);
         await saveState(state, pType);
@@ -383,18 +457,74 @@ async function runAutomatedEngineCycle(forceRefresh = false) {
 function startTradingScheduler() {
   console.log("Starting Quant Sentinal Automated Trading Scheduler...");
 
-  // 1. Execute immediately on startup catchup (fast boot using cache)
-  runAutomatedEngineCycle(false);
+  // 1. Daily Cron Trigger: Automatically triggers "Daily Update" every weekday at 15:45 IST
+  // (15 minutes after Indian market close at 15:30 IST to capture verified closing bars)
+  const cronExpr = schedulerStatus.cronExpression;
+  console.log(`[SCHEDULER CRON] Registering Daily Update trigger: "${cronExpr}" (${schedulerStatus.timezone})`);
 
-  // 2. Schedule periodic checks (Every 30 minutes during market hours)
+  cron.schedule(cronExpr, async () => {
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(Date.now() + istOffset);
+    const pad = (n) => String(n).padStart(2, '0');
+    const todayIST = `${istNow.getUTCFullYear()}-${pad(istNow.getUTCMonth() + 1)}-${pad(istNow.getUTCDate())}`;
+
+    console.log(`[SCHEDULED CRON] 15:45 IST Daily Update trigger fired for date: ${todayIST}`);
+
+    if (NSE_HOLIDAYS.has(todayIST)) {
+      console.log(`[SCHEDULED CRON] Today (${todayIST}) is an official NSE exchange holiday. Skipping scheduled Daily Update.`);
+      return;
+    }
+
+    try {
+      await executeDailyUpdate('scheduled_cron', true);
+    } catch (err) {
+      console.error("[SCHEDULED CRON] Daily Update execution error:", err.message);
+    }
+  }, {
+    timezone: schedulerStatus.timezone
+  });
+
+  // 2. Post-Market / Startup Catch-up Check
+  // If server starts after 15:45 IST on a trading day, immediately run Daily Update if not yet completed today
+  const checkStartupCatchup = async () => {
+    try {
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(Date.now() + istOffset);
+      const dayOfWeek = istNow.getUTCDay();
+      const istHHMM = istNow.getUTCHours() * 100 + istNow.getUTCMinutes();
+      const pad = (n) => String(n).padStart(2, '0');
+      const todayDateStr = `${istNow.getUTCFullYear()}-${pad(istNow.getUTCMonth() + 1)}-${pad(istNow.getUTCDate())}`;
+
+      const isTradingWeekday = dayOfWeek >= 1 && dayOfWeek <= 5 && !NSE_HOLIDAYS.has(todayDateStr);
+      const isPastMarketClose = istHHMM >= 1545; // Past 15:45 IST
+
+      if (isTradingWeekday && isPastMarketClose) {
+        const liveState = await loadState('live');
+        const backtestState = await loadState('backtest');
+        if (liveState.lastSimulationDate < todayDateStr || backtestState.lastSimulationDate < todayDateStr) {
+          console.log(`[SCHEDULER BOOT] Post-market boot detected (past 15:45 IST). Executing automated Daily Update for ${todayDateStr}...`);
+          await executeDailyUpdate('startup_post_market', true);
+          return;
+        }
+      }
+      // Otherwise perform standard non-blocking fast boot catchup
+      runAutomatedEngineCycle(false);
+    } catch (err) {
+      console.error("[SCHEDULER BOOT] Startup catch-up error:", err.message);
+      runAutomatedEngineCycle(false);
+    }
+  };
+
+  checkStartupCatchup();
+
+  // 3. Periodic Intraday Checks (Every 30 minutes during market hours 09:15 - 15:30 IST)
   const SCHEDULER_INTERVAL_MS = 30 * 60 * 1000;
   setInterval(() => {
-    // Check if market is open (Mon-Fri, 09:15 to 15:30 IST, excluding exchange holidays)
     const isMarketOpen = isMarketHoursIST();
-    console.log(`[SCHEDULER TIMER] Triggered. Market Open Status (IST): ${isMarketOpen}`);
-
-    // Always run cycle (forces live cache refresh during market hours)
-    runAutomatedEngineCycle(isMarketOpen);
+    console.log(`[SCHEDULER TIMER] Intraday check triggered. Market Open Status (IST): ${isMarketOpen}`);
+    if (isMarketOpen) {
+      runAutomatedEngineCycle(true);
+    }
   }, SCHEDULER_INTERVAL_MS);
 }
 
