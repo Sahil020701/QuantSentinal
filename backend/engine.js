@@ -448,7 +448,11 @@ function hasBarsForRange(dataObj, minStartDate, targetEndDate) {
 // Helper to select the benchmark series that has the latest available market bar and most complete session history
 function getBenchmarkSeries(dataObj) {
   if (!dataObj || typeof dataObj !== 'object') return null;
-  const candidates = [dataObj['RELIANCE.NS'], dataObj['^NSEI'], dataObj['NIFTYBEES.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
+  // Always prioritize broad market index benchmarks (^NSEI, NIFTYBEES.NS) over individual stocks
+  const indexCandidates = [dataObj['^NSEI'], dataObj['NIFTYBEES.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
+  const candidates = indexCandidates.length > 0
+    ? indexCandidates
+    : [dataObj['RELIANCE.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
   if (candidates.length === 0) return null;
   // Sort by latest available date descending, then by series length descending (most complete history)
   candidates.sort((a, b) => {

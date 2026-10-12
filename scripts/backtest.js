@@ -203,9 +203,16 @@ function loadWatchlist() {
 // Dynamic benchmark selector: picks the benchmark series with the latest available bar
 function getBenchmarkSeries(cachedData) {
   if (!cachedData) return null;
-  const candidates = [cachedData['NIFTYBEES.NS'], cachedData['^NSEI'], cachedData['RELIANCE.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
+  const indexCandidates = [cachedData['^NSEI'], cachedData['NIFTYBEES.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
+  const candidates = indexCandidates.length > 0
+    ? indexCandidates
+    : [cachedData['RELIANCE.NS']].filter(arr => Array.isArray(arr) && arr.length > 0);
   if (candidates.length === 0) return null;
-  candidates.sort((a, b) => b[b.length - 1].date.localeCompare(a[a.length - 1].date));
+  candidates.sort((a, b) => {
+    const dateCmp = b[b.length - 1].date.localeCompare(a[a.length - 1].date);
+    if (dateCmp !== 0) return dateCmp;
+    return b.length - a.length;
+  });
   return candidates[0];
 }
 
