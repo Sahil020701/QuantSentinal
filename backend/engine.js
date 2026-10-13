@@ -958,7 +958,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       if (currentClose < 20 || currentClose > 75000) continue;
       if (!ema20 || currentClose < ema20) continue;
       if (ema50 && (ema20 < ema50 * 1.005 || currentClose < ema50)) continue;
-      if (rsExcess < 0.030) continue;
+      if (rsExcess < 0.035) continue;
       if (stockReturn10d > 0.18) continue;
 
       const distFromEma20 = (currentClose - ema20) / ema20;
@@ -972,7 +972,7 @@ function scanMarketCandidates(simDate, cachedData, currentHoldings = [], config 
       if (!isNew20dHigh && !isCoilingNearHigh) continue;
 
       const minDayMove = isMetalETF ? 0.003 : 0.014;
-      const minRvol = isMetalETF ? 1.10 : 1.75;
+      const minRvol = isMetalETF ? 1.10 : 1.85;
       if (currentRvol < minRvol) continue;
 
       if (dayMove < minDayMove) continue;
@@ -1403,10 +1403,10 @@ async function runSimulation(targetEndDateStr, forceRefresh = false, portfolioTy
       const availableSlots = Math.max(1, state.config.maxPositions - state.holdings.length);
 
       // Pillar 2: Asymmetric Conviction Sizing:
-      // Grade A+ Institutional Breakouts (Score >= 93) get 15.0% capital allocation to supercharge compounding.
-      // Standard setups (Score < 93) get 12.5% allocation to balance portfolio diversification.
+      // Grade A+ Institutional Breakouts (Score >= 93) get 16.0% capital allocation to supercharge compounding.
+      // Standard setups (Score < 93) get 13.0% allocation to balance portfolio diversification.
       const isHighConviction = (targetStock.score || 0) >= 93;
-      const allocPct = isHighConviction ? 0.15 : 0.125;
+      const allocPct = isHighConviction ? 0.16 : 0.13;
       const targetPositionSize = totalPortfolioValue * allocPct;
       const minAllocationFloor = Math.min(4000, totalPortfolioValue * 0.04);
       if (state.cash < minAllocationFloor + minCashReserve) return false;
@@ -1954,8 +1954,8 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false, portfolioType
 
     // Indicator Evaluations (Pass/Fail matching Active Strategy Approach)
     const passTrend = (currentClose >= (ema20 || 0)) && (ema50 ? ema20 >= ema50 * (isConservative ? 1.01 : 1.005) : true);
-    const passRS = alpha20d >= (isConservative ? 4.0 : 3.0);
-    const passRvol = rvol >= (isConservative ? 1.90 : 1.75);
+    const passRS = alpha20d >= (isConservative ? 4.0 : 3.5);
+    const passRvol = rvol >= (isConservative ? 1.90 : 1.85);
     const passRSI = isConservative ? (rsi >= 52 && rsi <= 72.5) : (rsi >= 48 && rsi <= 76.5);
     const passBreakout = isConservative ? breakout20.isBullishBreakout : (breakout20.isBullishBreakout || distFrom20dHigh <= 1.5);
     const passCLV = clv >= (isConservative ? 0.68 : 0.64);
@@ -1980,7 +1980,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false, portfolioType
         shortName: 'RS Alpha',
         criteria: isConservative
           ? 'Alpha >= +4.0% institutional outperformance vs Nifty 50'
-          : 'Alpha >= +3.0% outperformance vs Nifty 50',
+          : 'Alpha >= +3.5% outperformance vs Nifty 50',
         value: `${alpha20d >= 0 ? '+' : ''}${alpha20d.toFixed(1)}%`,
         metric: `${alpha20d >= 0 ? '+' : ''}${alpha20d.toFixed(1)}% vs Nifty`,
         passed: Boolean(passRS)
@@ -1991,7 +1991,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false, portfolioType
         shortName: 'RVOL',
         criteria: isConservative
           ? 'Institutional volume >= 1.90x 20-day avg'
-          : 'Institutional volume >= 1.75x 20-day avg',
+          : 'Institutional volume >= 1.85x 20-day avg',
         value: `${rvol.toFixed(1)}x`,
         metric: `${rvol.toFixed(2)}x Vol`,
         passed: Boolean(passRvol)
@@ -2128,8 +2128,8 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false, portfolioType
       const isAboveEma20 = currentClose > ema20;
       const isEmaAligned = ema50 ? ema20 >= ema50 * 0.995 : true;
       const rsAlphaExcess = stockReturn20d - benchmarkReturn20d;
-      const isAlpha3 = rsAlphaExcess >= 0.03;
-      const isRvol175 = rvol >= 1.75;
+      const isAlpha3 = rsAlphaExcess >= 0.035;
+      const isRvol175 = rvol >= 1.85;
       const isRsiSweet = rsi >= 52 && rsi <= 76.5;
       const isGreen = currentClose >= currentOpen;
       const isClv64 = clv >= 0.64;
@@ -2159,8 +2159,8 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false, portfolioType
         } else if (!isRvol175) {
           executionStatus = {
             status: 'RVOL_INSUFFICIENT',
-            label: `RVOL ${rvol.toFixed(1)}x < 1.75x`,
-            reason: `Relative volume is ${rvol.toFixed(2)}x. Live engine requires >= 1.75x institutional volume surge to confirm big-money backing.`
+            label: `RVOL ${rvol.toFixed(1)}x < 1.85x`,
+            reason: `Relative volume is ${rvol.toFixed(2)}x. Live engine requires >= 1.85x institutional volume surge to confirm big-money backing.`
           };
         } else if (!isDayMove14) {
           executionStatus = {
@@ -2171,8 +2171,8 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false, portfolioType
         } else if (!isAlpha3) {
           executionStatus = {
             status: 'ALPHA_LOW',
-            label: `Alpha +${(rsAlphaExcess * 100).toFixed(1)}% < 3%`,
-            reason: `Relative Strength Alpha is +${(rsAlphaExcess * 100).toFixed(1)}% vs Nifty. Live engine requires >= +3.0% alpha for high-conviction swing leaders.`
+            label: `Alpha +${(rsAlphaExcess * 100).toFixed(1)}% < 3.5%`,
+            reason: `Relative Strength Alpha is +${(rsAlphaExcess * 100).toFixed(1)}% vs Nifty. Live engine requires >= +3.5% alpha for high-conviction swing leaders.`
           };
         } else if (!isGreen) {
           executionStatus = {
@@ -2209,7 +2209,7 @@ async function getTop25AlgoRankings(simDate, forceRefresh = false, portfolioType
     const stopLossPercent = state.config?.stopLossPercent || 0.048;
     const targetProfitPercent = state.config?.targetProfitPercent || 0.25;
     const isHighConviction = algoScore >= 93;
-    const suggestedAllocPct = isHighConviction ? 15.0 : 12.5;
+    const suggestedAllocPct = isHighConviction ? 16.0 : 13.0;
     const stopLossPrice = Number((currentClose * (1 - stopLossPercent)).toFixed(2));
     const targetPrice = Number((currentClose * (1 + targetProfitPercent)).toFixed(2));
     const riskAmount = Number((currentClose - stopLossPrice).toFixed(2));
@@ -2548,7 +2548,7 @@ async function deployIdleCash(simDate, portfolioType = 'backtest', existingState
 
     // --- NEW POSITION BRANCH ---
     const isHighConviction = (targetStock.score || 0) >= 93;
-    const allocPct = isHighConviction ? 0.15 : 0.125;
+    const allocPct = isHighConviction ? 0.16 : 0.13;
     const targetPositionSize = totalPortfolioValue * allocPct;
     const capitalAllocation = Math.min(targetPositionSize, state.cash - minCashReserve);
     let qty = Math.floor(capitalAllocation / targetStock.price);

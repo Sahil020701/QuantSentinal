@@ -40,8 +40,8 @@ function parseArgs() {
     maxPositions: 10,
     stopLossPercent: 0.048,      // 4.8%
     targetProfitPercent: 0.25,   // 25.0%
-    allocStandard: 0.125,        // 12.5% standard allocation
-    allocGradeA: 0.150,          // 15.0% high conviction allocation
+    allocStandard: 0.130,        // 13.0% standard allocation
+    allocGradeA: 0.160,          // 16.0% high conviction allocation
     mode: 'broad',               // 'broad' (high frequency ~190 trades) or 'strict' (matches Dashboard UI ~40 trades)
     rotationEnabled: false,      // Disabled by default
     rotationMinCandidateScore: 88,
@@ -306,7 +306,7 @@ function scanCandidates(simDate, cachedData, currentHoldings, watchlist) {
     const past20Close = closesSlice[Math.max(0, len - 21)];
     const stockReturn20d = past20Close > 0 ? (currentClose - past20Close) / past20Close : 0;
     const rsExcess = stockReturn20d - benchmarkReturn20d;
-    if (rsExcess < 0.030) continue;
+    if (rsExcess < 0.035) continue;
 
     const past10Close = closesSlice[Math.max(0, len - 11)];
     const stockReturn10d = past10Close > 0 ? (currentClose - past10Close) / past10Close : 0;
@@ -324,7 +324,7 @@ function scanCandidates(simDate, cachedData, currentHoldings, watchlist) {
 
     const avgVol20 = volumesSlice.slice(Math.max(0, len - 21), len - 1).reduce((a, b) => a + b, 0) / 20;
     const rvol = avgVol20 > 0 ? (currentBar.volume || 0) / avgVol20 : 1;
-    if (rvol < 1.75) continue;
+    if (rvol < 1.85) continue;
 
     const prevClose = closesSlice[len - 2] || currentClose;
     const dayMove = (currentClose - prevClose) / prevClose;
