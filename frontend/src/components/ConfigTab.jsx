@@ -280,7 +280,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
               {/* Strategy Toggle Cards */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))',
                 gap: '0.75rem',
                 marginTop: '0.35rem'
               }}>
@@ -579,7 +579,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: '600', color: 'var(--text-primary)' }}>
-                      <span>⏰ Automated Daily Trigger</span>
+                      <span>Automated Daily Trigger</span>
                       <span style={{
                         fontSize: '0.7rem',
                         padding: '0.15rem 0.45rem',
@@ -603,7 +603,7 @@ export default function ConfigTab({ portfolio, portfolioMode = 'live', onConfigU
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
                       <span>Last run: {new Date(schedulerInfo.lastRun.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({schedulerInfo.lastRun.source === 'scheduled_cron' ? 'Automated' : 'Manual'})</span>
                       <span style={{ color: schedulerInfo.lastRun.status === 'success' ? '#22c55e' : '#ef4444' }}>
-                        {schedulerInfo.lastRun.status === 'success' ? '✓ Completed' : '⚠ Error'}
+                        {schedulerInfo.lastRun.status === 'success' ? '✓ Completed' : 'Error'}
                       </span>
                     </div>
                   )}

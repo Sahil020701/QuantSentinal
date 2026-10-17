@@ -532,7 +532,7 @@ function startTradingScheduler() {
 async function startServer() {
   try {
     await mongoose.connect(MONGO_URI);
-    console.log('MongoDB Connected successfully.');
+    console.log(`MongoDB Connected successfully to database: [${mongoose.connection.name}].`);
   } catch (err) {
     console.warn('MongoDB Connection Warning (falling back to in-memory state):', err.message);
   }

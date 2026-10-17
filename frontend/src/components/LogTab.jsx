@@ -42,7 +42,7 @@ function DetailDrawer({ details, date }) {
         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '0.45rem' }}>
           Portfolio Snapshot — {date}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+        <div className="log-snap-grid">
           {[
             { label: 'Total Value', val: `₹${fmt(details.totalValue)}` },
             { label: 'Cash',        val: `₹${fmt(details.cash)}`,          sub: details.totalValue > 0 ? `${((details.cash / details.totalValue) * 100).toFixed(0)}% liquid` : '' },
@@ -65,9 +65,8 @@ function DetailDrawer({ details, date }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
             {txns.map((t, i) => (
-              <div key={i} style={{
-                display: 'grid', gridTemplateColumns: '48px 70px 1fr auto', alignItems: 'center',
-                gap: '0.5rem', padding: '0.5rem 0.7rem', background: 'var(--bg-main)',
+              <div key={i} className="log-tx-row" style={{
+                padding: '0.5rem 0.7rem', background: 'var(--bg-main)',
                 borderRadius: '7px', border: '1px solid var(--border-color)', fontSize: '0.78rem'
               }}>
                 <TxBadge type={t.type} />
@@ -137,7 +136,7 @@ function LogEntry({ log }) {
       borderLeft: `3px solid ${meta.dot}`,
     }}>
       {/* Compact row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.65rem 0.85rem' }}>
+      <div className="log-row">
         {/* Date */}
         <div style={{ minWidth: '82px', flexShrink: 0 }}>
           <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary)' }}>{log.date}</div>
@@ -158,7 +157,7 @@ function LogEntry({ log }) {
           {buys === 0 && sells === 0 && !deposit && <span style={{ fontSize: '0.62rem', padding: '0.12rem 0.4rem', borderRadius: '3px', background: 'rgba(71,85,105,0.07)', color: 'var(--text-muted)' }}>—</span>}
         </div>
         {/* Summary text */}
-        <div style={{ flex: 1, fontSize: '0.77rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+        <div className="log-row-text" style={{ flex: 1, fontSize: '0.77rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
           {firstLine}
         </div>
         {/* EOD value */}
@@ -243,13 +242,13 @@ export default function LogTab({ logs = [] }) {
 
   return (
     <div className="tab-content">
-      <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+      <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {/* Header */}
         <div className="panel-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
           <div>
             <h2>Quant Sentinal Trading Log</h2>
             <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-              {logs.length} trading days &nbsp;&middot;&nbsp; {totalBuys} buys &nbsp;&middot;&nbsp; {totalSells} sells &nbsp;&middot;&nbsp; tap <strong>i</strong> for full daily breakdown
+              {logs.length} trading days &middot; {totalBuys} buys &middot; {totalSells} sells &middot; tap <strong>i</strong> for full daily breakdown
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -273,7 +272,7 @@ export default function LogTab({ logs = [] }) {
               placeholder="Filter date… e.g. 2026-08"
               value={searchDate}
               onChange={e => handleSearch(e.target.value)}
-              style={{ padding: '0.3rem 0.65rem', fontSize: '0.73rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none', width: '175px' }}
+              style={{ padding: '0.3rem 0.65rem', fontSize: '0.73rem', borderRadius: '6px', border: '1px solid var(--border-color-hover)', background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none', width: '175px', maxWidth: '100%' }}
             />
           </div>
         </div>

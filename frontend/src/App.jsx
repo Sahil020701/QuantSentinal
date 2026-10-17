@@ -98,7 +98,7 @@ export default function App() {
   if (error) {
     return (
       <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <div className="glass-panel" style={{ maxWidth: '500px', textAlign: 'center', padding: '3rem 2rem' }}>
+        <div className="glass-panel connection-card">
           <div className="status-badge closed" style={{ margin: '0 auto 1.5rem', width: 'fit-content' }}>
             <div className="status-dot" />
             <span>DISCONNECTED</span>
@@ -131,8 +131,9 @@ export default function App() {
           </div>
         </div>
 
+        <div className="header-actions">
         {/* Portfolio Mode Switcher Toggle */}
-        <div className="portfolio-switcher">
+        <div className="portfolio-switcher" role="group" aria-label="Portfolio mode">
           <button
             type="button"
             className={`portfolio-toggle-btn ${portfolioMode === 'live' ? 'active-live' : ''}`}
@@ -163,10 +164,11 @@ export default function App() {
           <div className="status-dot" />
           <span>{marketStatus.text}</span>
         </div>
+        </div>
       </header>
 
       {/* Tab Navs */}
-      <nav className="tabs-navigation">
+      <nav className="tabs-navigation" aria-label="Sections">
         <button
           onClick={() => setActiveTab('dashboard')}
           className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
@@ -206,7 +208,7 @@ export default function App() {
       </nav>
 
       {/* Main Tab Render */}
-      <main style={{ flex: 1 }}>
+      <main>
         {activeTab === 'dashboard' && (
           <DashboardTab
             portfolio={portfolio}
@@ -269,7 +271,7 @@ export default function App() {
       </main>
 
       {/* Footer copyright */}
-      <footer style={{ marginTop: '3rem', padding: '1rem 0', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+      <footer className="app-footer">
         <span>Quant Sentinal Trading System - Aim: 15%-20% Annual Target</span>
         <span>Simulated on National Stock Exchange (NSE) Indices</span>
       </footer>

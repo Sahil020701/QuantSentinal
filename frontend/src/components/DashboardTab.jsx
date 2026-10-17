@@ -80,6 +80,13 @@ export function computeHoldingTrailingInfo(position) {
   };
 }
 
+// Currency formatter: sign first, then symbol (e.g. -₹398.00 / +₹205.80)
+const inr = (n, signed = false) => {
+  const v = Number.isFinite(n) ? n : 0;
+  const sign = v < 0 ? '-' : signed ? '+' : '';
+  return `${sign}₹${Math.abs(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
 // ── Time-range definitions ──────────────────────────────────────────────────
 const RANGES = [
   { label: '1M', days: 30 },
@@ -311,6 +318,44 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
     ? (periodEndHV - periodStartHV)
     : (periodEndTradingPL - periodStartTradingPL);
 
+  // ── Derived statistics (client-side only, read-only) ─────────────────────
+  const tradeStats = useMemo(() => {
+    const h = portfolio.history || [];
+    const wins = h.filter(t => (t.profit || 0) > 0);
+    const losses = h.filter(t => (t.profit || 0) < 0);
+    const grossWin = wins.reduce((s, t) => s + t.profit, 0);
+    const grossLoss = Math.abs(losses.reduce((s, t) => s + t.profit, 0));
+    return {
+      count: h.length,
+      wins: wins.length,
+      losses: losses.length,
+      winRate: h.length > 0 ? (wins.length / h.length) * 100 : 0,
+      realized: h.reduce((s, t) => s + (t.profit || 0), 0),
+      avgWin: wins.length ? grossWin / wins.length : 0,
+      avgLoss: losses.length ? -grossLoss / losses.length : 0,
+      profitFactor: grossLoss > 0 ? grossWin / grossLoss : null,
+    };
+  }, [portfolio.history]);
+
+  // Deposit-adjusted drawdown: track equity as value / capital deployed
+  const drawdown = useMemo(() => {
+    let peak = 0;
+    let max = 0;
+    let current = 0;
+    for (const v of valuationHistory) {
+      const dep = v.totalDeposited || 0;
+      if (dep <= 0) continue;
+      const eq = (v.totalValue || 0) / dep;
+      if (eq > peak) peak = eq;
+      current = peak > 0 ? (eq / peak - 1) * 100 : 0;
+      if (current < max) max = current;
+    }
+    return { max, current };
+  }, [valuationHistory]);
+
+  const openPnl = holdings.reduce((s, p) => s + (p.profit || 0), 0);
+  const exposurePct = totalValue > 0 ? Math.max(0, Math.min(100, (holdingsValue / totalValue) * 100)) : 0;
+
   return (
     <div className="tab-content">
       {/* KPI Grid */}
@@ -324,7 +369,7 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
         <div className={`kpi-card ${netProfit >= 0 ? 'green' : 'red'}`}>
           <div className="kpi-label">Total Trading P&amp;L</div>
           <div className="kpi-value" style={{ color: netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>
-            {netProfit >= 0 ? '+' : ''}₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {inr(netProfit, true)}
           </div>
           <div className={`kpi-sub ${profitPercent >= 0 ? 'positive' : 'negative'}`}>
             {profitPercent >= 0 ? '▲ +' : '▼ '}{profitPercent.toFixed(2)}% All-Time Return
@@ -334,7 +379,7 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
         <div className={`kpi-card ${prevDayMetrics.amount >= 0 ? 'green' : 'red'}`}>
           <div className="kpi-label">Previous Day P&amp;L</div>
           <div className="kpi-value" style={{ color: prevDayMetrics.amount >= 0 ? 'var(--green)' : 'var(--red)' }}>
-            {prevDayMetrics.amount >= 0 ? '+' : ''}₹{prevDayMetrics.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {inr(prevDayMetrics.amount, true)}
           </div>
           <div className={`kpi-sub ${prevDayMetrics.percent >= 0 ? 'positive' : 'negative'}`}>
             {prevDayMetrics.hasPrev
@@ -378,159 +423,155 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
         {/* Growth Chart */}
         <div className="glass-panel">
           {/* Chart Header */}
-          <div className="panel-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-              <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {chartTitle}
-              </h2>
-
+          <div className="panel-header" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div>
+              <h2>{chartTitle}</h2>
+              <div className={`panel-sub ${periodIsUp ? 'pos' : 'neg'}`} style={{ fontWeight: 600 }}>
+                {periodChangeAmt >= 0 ? '+' : '-'}₹{Math.abs(periodChangeAmt).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                {' '}({periodChangePct >= 0 ? '+' : ''}{periodChangePct.toFixed(2)}%) <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>over {activeRange}</span>
+              </div>
             </div>
 
-            {/* Controls row: mode toggle + time range buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-
-              {/* Chart Mode Toggle */}
-              <div style={{
-                display: 'flex', borderRadius: '8px', overflow: 'hidden',
-                border: '1px solid var(--border-color)', flexShrink: 0
-              }}>
+            <div className="chart-controls">
+              <div className="seg" role="group" aria-label="Chart series">
                 {[
                   { key: 'total', label: 'Total' },
-                  { key: 'invested', label: 'Invested Only' },
-                  { key: 'pl', label: 'Pure P/L' }
-                ].map((m, idx, arr) => (
+                  { key: 'invested', label: 'Invested' },
+                  { key: 'pl', label: 'P&L' }
+                ].map(m => (
                   <button
                     key={m.key}
+                    type="button"
                     onClick={() => setChartMode(m.key)}
-                    style={{
-                      padding: '5px 12px',
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      border: 'none',
-                      borderRight: idx < arr.length - 1 ? '1px solid var(--border-color)' : 'none',
-                      background: chartMode === m.key ? 'var(--accent)' : 'transparent',
-                      color: chartMode === m.key ? '#ffffff' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      fontFamily: 'inherit',
-                    }}
+                    className={`seg-btn ${chartMode === m.key ? 'active' : ''}`}
                   >
                     {m.label}
                   </button>
                 ))}
               </div>
-
-              {/* Time Range Buttons */}
-              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <div className="seg" role="group" aria-label="Time range">
                 {RANGES.map(r => (
                   <button
                     key={r.label}
+                    type="button"
                     onClick={() => setActiveRange(r.label)}
-                    style={{
-                      padding: '4px 10px',
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      borderRadius: '6px',
-                      border: activeRange === r.label
-                        ? '1px solid var(--accent)'
-                        : '1px solid var(--border-color)',
-                      background: activeRange === r.label
-                        ? 'var(--accent)'
-                        : 'transparent',
-                      color: activeRange === r.label
-                        ? '#ffffff'
-                        : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      fontFamily: 'inherit',
-                    }}
-                    onMouseEnter={e => {
-                      if (activeRange !== r.label) {
-                        e.currentTarget.style.borderColor = 'var(--accent)';
-                        e.currentTarget.style.color = 'var(--accent)';
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (activeRange !== r.label) {
-                        e.currentTarget.style.borderColor = 'var(--border-color)';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }
-                    }}
+                    className={`seg-btn ${activeRange === r.label ? 'active' : ''}`}
                   >
-                    {r.label === 'All' ? 'Since Inception' : r.label}
+                    {r.label}
                   </button>
                 ))}
               </div>
-
             </div>
           </div>
 
           {/* Chart */}
-          <div style={{ height: '300px', marginTop: '0.25rem' }}>
+          <div className="chart-frame">
             <MiniChart
               data={chartData}
               valueKey={chartValueKey}
               dateKey="date"
               fillGradId="netWorthGrad"
+              responsive
               baselineValue={isPlMode ? 0 : isInvestedMode ? null : totalDeposited}
               baselineLabel={isPlMode ? 'Break-even (₹0)' : 'Invested Capital'}
             />
           </div>
 
           {/* Bottom meta row */}
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginTop: '0.75rem', paddingTop: '0.75rem',
-            borderTop: '1px solid var(--border-color)',
-            fontSize: '0.75rem', color: 'var(--text-secondary)'
-          }}>
+          <div className="chart-meta">
             {isPlMode ? (
-              <span>Net Profit: <strong style={{ color: netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                {netProfit >= 0 ? '+' : ''}₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%)
+              <span>Net profit <strong className={netProfit >= 0 ? 'pos' : 'neg'}>
+                {inr(netProfit, true)} ({profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%)
               </strong></span>
             ) : isInvestedMode ? (
-              <span>Invested Value: <strong style={{ color: 'var(--text-primary)' }}>₹{holdingsValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+              <span>Invested value <strong style={{ color: 'var(--text-primary)' }}>₹{holdingsValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
             ) : (
-              <span>Invested Capital: <strong style={{ color: 'var(--text-primary)' }}>₹{totalDeposited.toLocaleString('en-IN')}</strong></span>
+              <span>Capital deployed <strong style={{ color: 'var(--text-primary)' }}>₹{totalDeposited.toLocaleString('en-IN')}</strong></span>
             )}
-            <span>Data Points: <strong style={{ color: 'var(--text-primary)' }}>{chartData.length}</strong></span>
-            <span>Last Updated: <strong style={{ color: 'var(--accent)' }}>{portfolio.lastSimulationDate}</strong></span>
+            <span>{chartData.length} data points</span>
+            <span>Updated <strong style={{ color: 'var(--text-primary)' }}>{portfolio.lastSimulationDate}</strong></span>
           </div>
         </div>
 
-        {/* Short Summary / Trader Stats */}
-        <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div className="panel-header">
-            <h2>Quant Sentinal Trading Status</h2>
+        {/* Performance & Risk Statistics */}
+        <div className="glass-panel">
+          <div className="panel-header" style={{ marginBottom: '0.5rem' }}>
+            <h2>Performance &amp; Risk</h2>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, justifyContent: 'center' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Risk Setting:</span>
-              <span style={{ fontWeight: '600', color: 'var(--accent)', textTransform: 'capitalize' }}>
-                {portfolio.config.aggressiveness}
+          <div className="stat-list">
+            <div className="stat-group-title">Returns</div>
+            <div className="stat-row">
+              <span className="stat-k">Total return</span>
+              <span className={`stat-v ${profitPercent >= 0 ? 'pos' : 'neg'}`}>{profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-k">{cagrMetrics.isAbsolute ? 'Return (under 30d)' : 'Annualized (CAGR)'}</span>
+              <span className={`stat-v ${cagrMetrics.cagr >= 0 ? 'pos' : 'neg'}`}>{cagrMetrics.cagr >= 0 ? '+' : ''}{cagrMetrics.cagr.toFixed(2)}%</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-k">Max drawdown</span>
+              <span className="stat-v neg">{drawdown.max.toFixed(2)}%</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-k">Current drawdown</span>
+              <span className={`stat-v ${drawdown.current < -0.005 ? 'neg' : ''}`}>{drawdown.current.toFixed(2)}%</span>
+            </div>
+
+            <div className="stat-group-title">Closed trades</div>
+            <div className="stat-row">
+              <span className="stat-k">Win rate</span>
+              <span className="stat-v">
+                {tradeStats.count > 0 ? `${tradeStats.winRate.toFixed(1)}% (${tradeStats.wins}W / ${tradeStats.losses}L)` : '—'}
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Profit Target:</span>
-              <span style={{ fontWeight: '600', color: 'var(--green)' }}>+{portfolio.config.targetProfitPercent * 100}%</span>
+            <div className="stat-row">
+              <span className="stat-k">Profit factor</span>
+              <span className="stat-v">{tradeStats.profitFactor === null ? '—' : tradeStats.profitFactor.toFixed(2)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Stop Loss:</span>
-              <span style={{ fontWeight: '600', color: 'var(--red)' }}>-{portfolio.config.stopLossPercent * 100}%</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Annualized Return:</span>
-              <span style={{ fontWeight: '600', color: cagrMetrics.cagr >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                {cagrMetrics.cagr >= 0 ? '+' : ''}{cagrMetrics.cagr.toFixed(2)}% p.a.
+            <div className="stat-row">
+              <span className="stat-k">Avg win / Avg loss</span>
+              <span className="stat-v">
+                <span className="pos">₹{tradeStats.avgWin.toFixed(0)}</span> / <span className="neg">₹{Math.abs(tradeStats.avgLoss).toFixed(0)}</span>
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Total Completed Trades:</span>
-              <span style={{ fontWeight: '600' }}>{portfolio.history.length}</span>
+            <div className="stat-row">
+              <span className="stat-k">Realized P&amp;L</span>
+              <span className={`stat-v ${tradeStats.realized >= 0 ? 'pos' : 'neg'}`}>
+                {tradeStats.realized >= 0 ? '+' : '-'}₹{Math.abs(tradeStats.realized).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Last Updated Date:</span>
-              <span style={{ fontWeight: '600', color: 'var(--accent)' }}>{portfolio.lastSimulationDate}</span>
+
+            <div className="stat-group-title">Exposure</div>
+            <div className="stat-row">
+              <span className="stat-k">Open P&amp;L</span>
+              <span className={`stat-v ${openPnl >= 0 ? 'pos' : 'neg'}`}>
+                {openPnl >= 0 ? '+' : '-'}₹{Math.abs(openPnl).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div style={{ padding: '0.4rem 0 0.2rem' }}>
+              <div className="alloc-bar" aria-hidden="true">
+                <span style={{ width: `${Math.min(100, exposurePct)}%`, background: 'var(--accent)' }} />
+              </div>
+              <div className="alloc-legend">
+                <span>Invested {exposurePct.toFixed(0)}%</span>
+                <span>Cash {(100 - exposurePct).toFixed(0)}%</span>
+              </div>
+            </div>
+
+            <div className="stat-group-title">Strategy</div>
+            <div className="stat-row">
+              <span className="stat-k">Risk setting</span>
+              <span className="stat-v" style={{ textTransform: 'capitalize' }}>{portfolio.config.aggressiveness}</span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-k">Target / Stop loss</span>
+              <span className="stat-v">
+                <span className="pos">+{+(portfolio.config.targetProfitPercent * 100).toFixed(1)}%</span> / <span className="neg">-{+(portfolio.config.stopLossPercent * 100).toFixed(1)}%</span>
+              </span>
+            </div>
+            <div className="stat-row">
+              <span className="stat-k">Last updated</span>
+              <span className="stat-v">{portfolio.lastSimulationDate}</span>
             </div>
           </div>
         </div>
@@ -538,16 +579,16 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
 
       {/* Holdings Section */}
       <div className="glass-panel">
-        <div className="panel-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="panel-header" style={{ flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <h2>Active Holdings</h2>
-            <span className={`status-badge ${portfolioMode === 'live' ? 'live' : 'closed'}`} style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem' }}>
+            <span className={`status-badge ${portfolioMode === 'live' ? 'live' : 'closed'}`}>
               <span className="status-dot" />
-              <span>{portfolioMode === 'live' ? 'Live Trading Portfolio (₹50,000)' : 'Backtest Simulation'}</span>
+              <span>{portfolioMode === 'live' ? 'Live Portfolio' : 'Backtest Simulation'}</span>
             </span>
           </div>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Showing {holdings.length} open position{holdings.length === 1 ? '' : 's'}
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            {holdings.length} open position{holdings.length === 1 ? '' : 's'}
           </span>
         </div>
 
@@ -566,17 +607,17 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
           </div>
         ) : (
           <div className="table-container">
-            <table className="custom-table">
+            <table className="custom-table resp-table">
               <thead>
                 <tr>
                   <th>Asset</th>
                   <th>Position</th>
                   <th>Buy Price</th>
                   <th>Current Price</th>
-                  <th>P&amp;L Returns</th>
-                  <th>Dynamic Stop Loss</th>
-                  <th>Target Upside</th>
-                  <th style={{ textAlign: 'center' }}>Trade Plan &amp; Steps</th>
+                  <th>P&amp;L</th>
+                  <th>Stop Loss</th>
+                  <th>Target</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -587,42 +628,40 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
 
                   return (
                     <tr key={idx}>
-                      <td>
+                      <td data-label="Asset">
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                             <span className="stock-badge">{position.symbol.replace('.NS', '')}</span>
                             {position.isAccumulated && (
-                              <span style={{ fontSize: '0.62rem', fontWeight: '700', padding: '1px 5px', borderRadius: '3px', background: 'rgba(56,189,248,0.18)', color: '#38bdf8', letterSpacing: '0.04em' }}>
-                                PYRAMID
-                              </span>
+                              <span className="trailing-chip badge-breakeven">Pyramid</span>
                             )}
                           </div>
                           <span className="company-name">{position.name}</span>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{position.sector || 'NSE Equity'}</span>
                         </div>
                       </td>
-                      <td>
-                        <div style={{ fontWeight: '700' }}>{position.quantity} shares</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          ₹{position.value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({weightPct}%)
+                      <td data-label="Position">
+                        <div style={{ fontWeight: '600' }}>{position.quantity} shares</div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                          ₹{position.value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {weightPct}%
                         </div>
                       </td>
-                      <td>₹{position.buyPrice.toFixed(2)}</td>
-                      <td>
-                        <span style={{ fontWeight: '700' }}>₹{position.currentPrice.toFixed(2)}</span>
+                      <td data-label="Buy Price">₹{position.buyPrice.toFixed(2)}</td>
+                      <td data-label="Current Price">
+                        <span style={{ fontWeight: '600' }}>₹{position.currentPrice.toFixed(2)}</span>
                       </td>
-                      <td className={isProfit ? 'positive-cell' : 'negative-cell'}>
-                        <div style={{ fontWeight: '700' }}>
-                          {isProfit ? '+' : ''}₹{position.profit.toFixed(2)}
+                      <td data-label="P&L" className={isProfit ? 'positive-cell' : 'negative-cell'}>
+                        <div>
+                          {inr(position.profit, true)}
                         </div>
-                        <div style={{ fontSize: '0.75rem' }}>
+                        <div style={{ fontSize: '0.74rem' }}>
                           {isProfit ? '+' : ''}{position.profitPercent.toFixed(2)}%
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Stop Loss">
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontWeight: '700', color: 'var(--red)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: '600', color: 'var(--red)' }}>
                               ₹{position.stopLoss.toFixed(2)}
                             </span>
                             <span className={`trailing-chip ${trailing.statusBadge.type}`}>
@@ -630,29 +669,29 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
                             </span>
                           </div>
                           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            Buffer: ₹{trailing.rupeeBuffer.toFixed(2)} ({trailing.pctBuffer.toFixed(1)}% cushion)
+                            Buffer ₹{trailing.rupeeBuffer.toFixed(2)} ({trailing.pctBuffer.toFixed(1)}%)
                           </span>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Target">
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span style={{ fontWeight: '700', color: 'var(--green)' }}>
+                          <span style={{ fontWeight: '600', color: 'var(--green)' }}>
                             ₹{position.targetPrice.toFixed(2)} (+25%)
                           </span>
                           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            Upside: +₹{trailing.rupeeUpside.toFixed(2)} (+{trailing.pctUpside.toFixed(1)}%)
+                            Upside +₹{trailing.rupeeUpside.toFixed(2)} ({trailing.pctUpside.toFixed(1)}%)
                           </span>
                         </div>
                       </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                      <td data-label="Actions">
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                           <button
                             type="button"
                             onClick={() => setInspectHolding(position)}
                             className="btn btn-secondary"
-                            style={{ padding: '5px 12px', fontSize: '0.75rem', fontWeight: '700' }}
+                            style={{ padding: '4px 10px', fontSize: '0.74rem' }}
                           >
-                            Trade Plan &amp; Steps
+                            Trade Plan
                           </button>
                           {portfolioMode === 'live' && (
                             <button
@@ -660,7 +699,7 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
                               onClick={() => handleCloseHolding(position)}
                               disabled={closingHolding}
                               className="btn btn-danger"
-                              style={{ padding: '5px 10px', fontSize: '0.72rem', fontWeight: '700' }}
+                              style={{ padding: '4px 10px', fontSize: '0.74rem' }}
                               title="Close Position (Sell shares on Live Portfolio)"
                             >
                               Sell
@@ -685,7 +724,7 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
 
         return (
           <div className="modal-backdrop" onClick={() => setInspectHolding(null)}>
-            <div className="modal-card" style={{ maxWidth: '680px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-card" style={{ maxWidth: '680px' }} role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
               
               {/* Modal Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
@@ -715,29 +754,25 @@ GTT Execution: Place OCO Sell on Zerodha Kite / Groww with Stop Loss trigger and
               </div>
 
               {/* Price Metrics Bar */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.6rem', margin: '1rem 0' }}>
-                <div style={{ background: 'var(--bg-card-hover)', borderRadius: '8px', padding: '0.6rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Entry Price</div>
-                  <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text-primary)' }}>₹{inspectHolding.buyPrice.toFixed(2)}</div>
+              <div className="metric-tiles" style={{ margin: '0.25rem 0' }}>
+                <div className="metric-tile">
+                  <div className="t-label">Entry</div>
+                  <div className="t-val">₹{inspectHolding.buyPrice.toFixed(2)}</div>
                 </div>
-                <div style={{ background: 'var(--bg-card-hover)', borderRadius: '8px', padding: '0.6rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Current Price</div>
-                  <div style={{ fontSize: '1rem', fontWeight: '800', color: isProfit ? 'var(--green)' : 'var(--red)' }}>
-                    ₹{inspectHolding.currentPrice.toFixed(2)}
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: isProfit ? 'var(--green)' : 'var(--red)', fontWeight: '700' }}>
-                    {isProfit ? '+' : ''}{inspectHolding.profitPercent.toFixed(2)}%
-                  </div>
+                <div className="metric-tile">
+                  <div className="t-label">Current</div>
+                  <div className={`t-val ${isProfit ? 'pos' : 'neg'}`}>₹{inspectHolding.currentPrice.toFixed(2)}</div>
+                  <div className={`t-sub ${isProfit ? 'pos' : 'neg'}`}>{isProfit ? '+' : ''}{inspectHolding.profitPercent.toFixed(2)}%</div>
                 </div>
-                <div style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: '8px', padding: '0.6rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--red)', fontWeight: '700', textTransform: 'uppercase' }}>Active Stop Loss</div>
-                  <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--red)' }}>₹{inspectHolding.stopLoss.toFixed(2)}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>₹{trailing.rupeeBuffer.toFixed(2)} buffer</div>
+                <div className="metric-tile is-red">
+                  <div className="t-label">Stop Loss</div>
+                  <div className="t-val">₹{inspectHolding.stopLoss.toFixed(2)}</div>
+                  <div className="t-sub">₹{trailing.rupeeBuffer.toFixed(2)} buffer</div>
                 </div>
-                <div style={{ background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: '8px', padding: '0.6rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--green)', fontWeight: '700', textTransform: 'uppercase' }}>Target Exit (+25%)</div>
-                  <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--green)' }}>₹{inspectHolding.targetPrice.toFixed(2)}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>+₹{trailing.rupeeUpside.toFixed(2)} upside</div>
+                <div className="metric-tile is-green">
+                  <div className="t-label">Target (+25%)</div>
+                  <div className="t-val">₹{inspectHolding.targetPrice.toFixed(2)}</div>
+                  <div className="t-sub">+₹{trailing.rupeeUpside.toFixed(2)} upside</div>
                 </div>
               </div>
 

@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from 'react';
 
+// Currency formatter: sign first, then symbol (e.g. -₹170.00 / +₹205.80)
+const inr = (n, signed = false) => {
+  const v = Number.isFinite(n) ? n : 0;
+  const sign = v < 0 ? '-' : signed ? '+' : '';
+  return `${sign}₹${Math.abs(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
 export default function LedgerTab({ history = [] }) {
   const [viewMode, setViewMode] = useState('campaigns'); // 'campaigns' | 'fills'
   const [expandedKeys, setExpandedKeys] = useState({});
@@ -128,7 +135,7 @@ export default function LedgerTab({ history = [] }) {
         <div className="ledger-summary-card">
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Realized P&L</span>
           <div className={`ledger-summary-val ${totalRealizedPnl >= 0 ? 'positive' : 'negative'}`}>
-            {totalRealizedPnl >= 0 ? '+' : ''}₹{totalRealizedPnl.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {inr(totalRealizedPnl, true)}
           </div>
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             Realized cash returns
@@ -163,48 +170,30 @@ export default function LedgerTab({ history = [] }) {
       {/* Main Ledger Table */}
       <div className="glass-panel">
         <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <h2 style={{ margin: 0 }}>Closed Trades Ledger</h2>
             {bestItem && (
-              <span style={{ fontSize: '0.75rem', color: 'var(--green)', background: 'var(--green-glow)', padding: '0.2rem 0.5rem', border: '1px solid var(--green-border)', borderRadius: '4px' }}>
-                Best: {bestItem.symbol.replace('.NS', '')} (+₹{(viewMode === 'campaigns' ? bestItem.totalProfit : bestItem.profit).toFixed(0)})
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--green)', background: 'var(--green-glow)', padding: '0.15rem 0.5rem', border: '1px solid var(--green-border)', borderRadius: '4px' }}>
+                Best: {bestItem.symbol.replace('.NS', '')} ({inr(viewMode === 'campaigns' ? bestItem.totalProfit : bestItem.profit, true).replace(/\.00$/, '')})
               </span>
             )}
           </div>
 
           {/* View Mode Toggle */}
-          <div style={{ display: 'inline-flex', background: 'var(--bg-main)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '2px' }}>
+          <div className="seg" role="group" aria-label="Ledger view">
             <button
+              type="button"
               onClick={() => setViewMode('campaigns')}
-              style={{
-                border: 'none',
-                background: viewMode === 'campaigns' ? 'var(--accent)' : 'transparent',
-                color: viewMode === 'campaigns' ? '#fff' : 'var(--text-secondary)',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '6px',
-                fontSize: '0.78rem',
-                fontWeight: viewMode === 'campaigns' ? '600' : '400',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
+              className={`seg-btn ${viewMode === 'campaigns' ? 'active' : ''}`}
             >
-              Position Campaigns (Unified)
+              Campaigns
             </button>
             <button
+              type="button"
               onClick={() => setViewMode('fills')}
-              style={{
-                border: 'none',
-                background: viewMode === 'fills' ? 'var(--accent)' : 'transparent',
-                color: viewMode === 'fills' ? '#fff' : 'var(--text-secondary)',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '6px',
-                fontSize: '0.78rem',
-                fontWeight: viewMode === 'fills' ? '600' : '400',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
+              className={`seg-btn ${viewMode === 'fills' ? 'active' : ''}`}
             >
-              All Execution Fills
+              Execution fills
             </button>
           </div>
         </div>
@@ -215,7 +204,7 @@ export default function LedgerTab({ history = [] }) {
           </div>
         ) : (
           <div className="table-container">
-            <table className="custom-table" style={{ fontSize: '0.85rem' }}>
+            <table className="custom-table resp-table ledger-table">
               <thead>
                 <tr>
                   <th>Asset</th>
@@ -283,7 +272,7 @@ export default function LedgerTab({ history = [] }) {
                           </td>
                           <td>{diffDays} day{diffDays === 1 ? '' : 's'}</td>
                           <td className={isProfit ? 'positive-cell' : 'negative-cell'}>
-                            <div>{isProfit ? '+' : ''}₹{campaign.totalProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            <div>{inr(campaign.totalProfit, true)}</div>
                             <div style={{ fontSize: '0.75rem', fontWeight: '600' }}>{isProfit ? '+' : ''}{campaign.netProfitPercent.toFixed(2)}%</div>
                           </td>
                           <td>
@@ -343,7 +332,7 @@ export default function LedgerTab({ history = [] }) {
                               </td>
                               <td>-</td>
                               <td className={legProfit ? 'positive-cell' : 'negative-cell'}>
-                                {legProfit ? '+' : ''}₹{leg.profit.toFixed(2)} ({legProfit ? '+' : ''}{leg.profitPercent.toFixed(2)}%)
+                                {inr(leg.profit, true)} ({legProfit ? '+' : ''}{leg.profitPercent.toFixed(2)}%)
                               </td>
                               <td>
                                 <span style={{ color: 'var(--text-secondary)' }}>{leg.reason}</span>
@@ -382,7 +371,7 @@ export default function LedgerTab({ history = [] }) {
                         </td>
                         <td>{diffDays} day{diffDays === 1 ? '' : 's'}</td>
                         <td className={isProfit ? 'positive-cell' : 'negative-cell'}>
-                          <div>{isProfit ? '+' : ''}₹{trade.profit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                          <div>{inr(trade.profit, true)}</div>
                           <div style={{ fontSize: '0.75rem' }}>{isProfit ? '+' : ''}{trade.profitPercent.toFixed(2)}%</div>
                         </td>
                         <td>

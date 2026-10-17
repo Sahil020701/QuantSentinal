@@ -262,6 +262,7 @@ export default function ScannerTab() {
                 dateKey="date"
                 strokeColor="var(--accent)"
                 fillGradId="modalChartGrad"
+                responsive
               />
             </div>
 

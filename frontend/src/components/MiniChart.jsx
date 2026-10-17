@@ -24,11 +24,25 @@ export default function MiniChart({
   valuePrefix = '₹',
   baselineValue = null,
   baselineLabel = 'Invested Capital',
+  responsive = false,
 }) {
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [animated, setAnimated] = useState(false);
+  const [box, setBox] = useState(null);
   const containerRef = useRef(null);
+
+  // Measure container so the SVG renders 1:1 (no letterboxing / shrunken text on mobile)
+  useEffect(() => {
+    if (!responsive || !containerRef.current || typeof ResizeObserver === 'undefined') return undefined;
+    const el = containerRef.current;
+    const ro = new ResizeObserver(entries => {
+      const r = entries[0].contentRect;
+      if (r.width > 0 && r.height > 0) setBox({ w: Math.round(r.width), h: Math.round(r.height) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [responsive]);
 
   // Trigger line-draw animation whenever data changes
   useEffect(() => {
@@ -58,13 +72,14 @@ export default function MiniChart({
   const adjustedRange = adjustedMax - adjustedMin;
 
   // SVG canvas dimensions
-  const width        = 600;
-  const height       = 260;
-  const paddingX     = 58;
+  const sized        = responsive && box;
+  const width        = sized ? box.w : 600;
+  const height       = sized ? box.h : 260;
+  const paddingX     = sized && box.w < 480 ? 46 : 58;
   const paddingY     = 24;
   const paddingBot   = 34;
-  const chartWidth   = width  - paddingX * 2;
-  const chartHeight  = height - paddingY - paddingBot;
+  const chartWidth   = Math.max(10, width  - paddingX * 2);
+  const chartHeight  = Math.max(10, height - paddingY - paddingBot);
 
   // Map data to SVG coordinates
   const points = values.map((val, i) => ({
@@ -93,7 +108,8 @@ export default function MiniChart({
 
   // Color based on period performance
   const isPositive = values[values.length - 1] >= values[0];
-  const lineColor  = isPositive ? '#16a34a' : '#dc2626';
+  // Theme palette colours (CSS variables, so they adapt to dark mode); applied via style, since SVG attributes can't read variables
+  const lineColor  = isPositive ? 'var(--green)' : 'var(--red)';
   const gradId     = `${fillGradId}_area`;
   const clipId     = `${fillGradId}_clip`;
 
@@ -157,12 +173,12 @@ export default function MiniChart({
       onMouseLeave={handleMouseLeave}
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg" style={{ width: '100%', height: '100%', display: 'block' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg" style={{ width: '100%', height: '100%', display: 'block' }} preserveAspectRatio={sized ? 'none' : undefined}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={lineColor} stopOpacity="0.2" />
-            <stop offset="70%"  stopColor={lineColor} stopOpacity="0.05" />
-            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+            <stop offset="0%"   style={{ stopColor: lineColor }} stopOpacity="0.12" />
+            <stop offset="70%"  style={{ stopColor: lineColor }} stopOpacity="0.03" />
+            <stop offset="100%" style={{ stopColor: lineColor }} stopOpacity="0" />
           </linearGradient>
           {/* Animated reveal clip */}
           <clipPath id={clipId}>
@@ -220,9 +236,9 @@ export default function MiniChart({
         {/* Chart line */}
         {pathD && (
           <path d={pathD} fill="none"
-            stroke={lineColor} strokeWidth="2.5"
+            strokeWidth="2"
             strokeLinecap="round" strokeLinejoin="round"
-            style={{ filter: `drop-shadow(0 2px 8px ${lineColor}55)` }}
+            style={{ stroke: lineColor }}
             clipPath={`url(#${clipId})`}
           />
         )}
@@ -235,11 +251,11 @@ export default function MiniChart({
           <g>
             <line x1={points[hoveredIdx].x} y1={paddingY}
               x2={points[hoveredIdx].x} y2={height - paddingBot}
-              stroke="rgba(15,23,42,0.1)" strokeWidth="1.5" strokeDasharray="4 3" />
+              style={{ stroke: 'var(--border-color-hover)' }} strokeWidth="1.5" strokeDasharray="4 3" />
             <circle cx={points[hoveredIdx].x} cy={points[hoveredIdx].y}
-              r="9" fill={lineColor} fillOpacity="0.12" />
+              r="9" style={{ fill: lineColor }} fillOpacity="0.12" />
             <circle cx={points[hoveredIdx].x} cy={points[hoveredIdx].y}
-              r="4.5" fill={lineColor} stroke="white" strokeWidth="2" />
+              r="4.5" style={{ fill: lineColor, stroke: 'var(--bg-card)' }} strokeWidth="2" />
           </g>
         )}
       </svg>
